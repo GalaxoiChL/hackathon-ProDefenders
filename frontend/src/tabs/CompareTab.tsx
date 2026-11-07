@@ -49,7 +49,7 @@ function Grid() {
             {regions.map((r) => {
               const on = picked.includes(r.code);
               return (
-                <button
+                <button type="button"
                   key={r.code}
                   onClick={() => toggle(r.code)}
                   aria-pressed={on}

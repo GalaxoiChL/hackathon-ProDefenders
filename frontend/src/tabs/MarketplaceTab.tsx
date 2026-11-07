@@ -188,7 +188,7 @@ function MoviesTable({ data, onOpen }: { data: MovieMarket; onOpen: (clip: strin
         {data.mode === "loading" && <p className="py-10 text-sm text-muted">Loading movies…</p>}
         {data.mode !== "loading" && list.length === 0 && <p className="py-10 text-sm text-muted">No movies match.</p>}
         {list.map((m) => (
-          <button
+          <button type="button"
             key={m.clip}
             role="row"
             onClick={() => onOpen(m.clip)}
@@ -347,7 +347,7 @@ function MovieView({ clip, data, onBack }: { clip: string; data: MovieMarket; on
 
 function BackLink({ onClick }: { onClick: () => void }) {
   return (
-    <button onClick={onClick} className="text-sm text-ink-2 underline decoration-rule-strong underline-offset-4 hover:decoration-ink">
+    <button type="button" onClick={onClick} className="text-sm text-ink-2 underline decoration-rule-strong underline-offset-4 hover:decoration-ink">
       ← All movies
     </button>
   );

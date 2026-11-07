@@ -113,7 +113,7 @@ function Workspace() {
             <ul>
               {campaigns.map((c) => (
                 <li key={c.id}>
-                  <button
+                  <button type="button"
                     onClick={() => setSelectedId(c.id)}
                     className={`relative w-full border-b border-rule py-3 pr-2 pl-3 text-left transition-colors ${c.id === selected?.id ? "bg-card" : "hover:bg-card/60"}`}
                   >
@@ -454,7 +454,7 @@ function EmailCard({ email, onUpdate }: { email: Email; onUpdate: (e: Email) => 
   return (
     <li className="border-b border-rule py-4">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <button onClick={() => setOpen((o) => !o)} className="min-w-0 flex-1 text-left">
+        <button type="button" onClick={() => setOpen((o) => !o)} className="min-w-0 flex-1 text-left">
           <p className="truncate text-sm font-medium">{email.subject}</p>
           <p className="mt-0.5 truncate text-xs text-muted">
             To {email.to_addr}

@@ -84,7 +84,7 @@ export function Transport({ group, disabled, children }: { group: SyncedVideos; 
   const progress = duration ? (time / duration) * 100 : 0;
   return (
     <div className="flex items-center gap-4 border-b border-rule py-3">
-      <button
+      <button type="button"
         onClick={toggle}
         disabled={disabled}
         aria-label={playing ? "Pause" : "Play"}

@@ -7,6 +7,7 @@ import MarketplaceTab from "./tabs/MarketplaceTab";
 import CompaniesTab from "./tabs/CompaniesTab";
 import OutreachTab from "./tabs/OutreachTab";
 import SignInTab from "./tabs/SignInTab";
+import HowItWorksTab from "./tabs/HowItWorksTab";
 
 export interface TabDef {
   id: string;
@@ -24,6 +25,7 @@ export const TABS: TabDef[] = [
   { id: "marketplace", label: "Marketplace", component: MarketplaceTab, enabled: true },
   { id: "companies", label: "Companies", component: CompaniesTab, enabled: true },
   { id: "outreach", label: "Outreach", component: OutreachTab, enabled: true },
+  { id: "how", label: "How it works", component: HowItWorksTab, enabled: true },
   { id: "signin", label: "Sign in", component: SignInTab, enabled: true, align: "end" },
 ];
 

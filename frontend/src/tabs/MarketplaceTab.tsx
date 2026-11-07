@@ -5,13 +5,13 @@ import { reserveFormula, reservePrice } from "../data/auction";
 import { regionStyle } from "../regions";
 import type { Slot } from "../data/types";
 import { NavLink } from "react-router-dom";
-import { Button, CountryMark, CountUp, PageHeader, compact, dec, money, num, useNow } from "../components/ui";
+import { Button, CountryMark, CountUp, PageHeader, compact, dec, money, num, useNow, SampleDataNote } from "../components/ui";
 import { CountryPicker, Dropdown } from "../components/CountryPicker";
 
 type StatusFilter = "all" | "open" | "closed";
 
 export default function MarketplaceTab() {
-  const { slots, bids, isClosed, results, currency, source } = useMarket();
+  const { slots, bids, isClosed, results, currency, source , waitingForBids } = useMarket();
   const [country, setCountry] = useState("all");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -42,6 +42,7 @@ export default function MarketplaceTab() {
           </dl>
         }
       />
+      <SampleDataNote show={waitingForBids} />
 
       <div className="mb-6 flex flex-wrap items-end gap-4">
         <div className="text-sm">

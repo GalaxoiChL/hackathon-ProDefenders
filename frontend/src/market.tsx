@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useApp } from "./state";
 import { loadMarket, type MarketData } from "./data/loadMarket";
 import { ineligibility, runAuction, type AuctionResult } from "./data/auction";
@@ -13,6 +13,8 @@ interface MarketState {
   bids: Bid[];
   brands: Ad[];
   source: MarketData["source"] | null;
+  /** backend-ul rulează, dar n-are oferte: se văd datele de test */
+  waitingForBids: boolean;
   /** moneda spațiilor (toate au aceeași în aceeași sursă) */
   currency: Slot["currency"];
   /** Momentul (ms) la care se închide fiecare licitație deschisă. */
@@ -34,36 +36,50 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   const [closed, setClosed] = useState<Set<string>>(new Set());
   const slots = useMemo(() => market?.slots ?? [], [market]);
 
-  // Companiile: reclamele încărcate, cele care au licitat prin backend și, pentru datele de test, brandurile de test.
+  // Companiile: cu backend, reclamele lui + cine a licitat prin el; cu datele de test, doar brandurile de test,
+  // ca Marketplace și Companies să arate la fel pe orice laptop.
   const brands = useMemo(() => {
     const byId = new Map<string, Ad>();
-    const extra = market?.source === "api" ? market.companies : (mockAds as Ad[]);
-    for (const a of [...(loaded ?? []), ...extra]) if (!byId.has(a.id)) byId.set(a.id, a);
+    const all =
+      market?.source === "api"
+        ? [...(loaded ?? []), ...market.companies]
+        : market?.source === "files"
+          ? [...(loaded ?? []), ...(mockAds as Ad[])]
+          : (mockAds as Ad[]);
+    for (const a of all) if (!byId.has(a.id)) byId.set(a.id, a);
     return [...byId.values()];
   }, [loaded, market]);
 
-  useEffect(() => {
-    loadMarket().then((m) => {
-      const now = Date.now();
-      setMarket(m);
-      setBids(m.bids);
-      setDeadlines(Object.fromEntries(m.slots.filter((s) => s.closes_in_sec).map((s) => [s.id, now + s.closes_in_sec! * 1000])));
-      setClosed(new Set(m.slots.filter((s) => s.status === "closed" || (!s.status && !s.closes_in_sec)).map((s) => s.id)));
-    });
+  /** Pornește de la zero cu o sursă nouă (prima încărcare, sau trecerea de la datele de test la backend). */
+  const start = useCallback((m: MarketData) => {
+    const now = Date.now();
+    setMarket(m);
+    setBids(m.bids);
+    setDeadlines(Object.fromEntries(m.slots.filter((s) => s.closes_in_sec).map((s) => [s.id, now + s.closes_in_sec! * 1000])));
+    setClosed(new Set(m.slots.filter((s) => s.status === "closed" || (!s.status && !s.closes_in_sec)).map((s) => s.id)));
   }, []);
 
-  // ofertele din backend sosesc oricând (pagina /bid/<token> din email), așa că le reîncărcăm periodic
   useEffect(() => {
-    if (market?.source !== "api") return;
+    loadMarket().then(start);
+  }, [start]);
+
+  // ofertele din backend sosesc oricând (pagina /bid/<token> din email): le reîncărcăm periodic, iar la prima
+  // ofertă reală trecem de la datele de test la cele din backend
+  const watching = market?.source === "api" || !!market?.waitingForBids;
+  const source = useRef(market?.source);
+  source.current = market?.source;
+  useEffect(() => {
+    if (!watching) return;
     const t = window.setInterval(() => {
       loadMarket().then((m) => {
-        if (m.source !== "api") return;
+        if (m.source !== "api") return; // tot fără oferte: rămânem pe datele de test
+        if (source.current !== "api") return start(m);
         setMarket(m);
         setBids(m.bids);
       });
     }, API_REFRESH_MS);
     return () => clearInterval(t);
-  }, [market?.source]);
+  }, [watching, start]);
 
   const closeAuction = useCallback((slotId: string) => setClosed((c) => new Set(c).add(slotId)), []);
 
@@ -104,6 +120,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     bids,
     brands,
     source: market?.source ?? null,
+    waitingForBids: !!market?.waitingForBids,
     currency: slots[0]?.currency ?? "EUR",
     deadlines,
     isClosed: (id) => closed.has(id),

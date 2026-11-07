@@ -1,4 +1,6 @@
-# ProDefenders
+# Swapboard
+
+> Echipa ProDefenders · repo `hackathon-ProDefenders`
 
 Reclame în video adaptate țării privitorului, puse de AI: același clip arată pe un panou de pe stradă altă reclamă pentru fiecare țară. Hackathon ITFest 2026 (sponsor Adobe).
 

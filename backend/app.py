@@ -37,7 +37,7 @@ def create_app(settings: Settings | None = None, geo: GeoResolver | None = None,
     geo = geo or GeoResolver(settings)
     jobs = JobRunner(settings, store)
 
-    app = FastAPI(title="ProDefenders API",
+    app = FastAPI(title="Swapboard API",
                   description="Reclame în video adaptate țării privitorului. API între pipeline și demo.",
                   version="1.0.0")
     app.state.settings, app.state.store, app.state.jobs = settings, store, jobs
@@ -210,7 +210,7 @@ def create_app(settings: Settings | None = None, geo: GeoResolver | None = None,
     else:
         @app.get("/", include_in_schema=False)
         def root():
-            return {"name": "ProDefenders API", "docs": "/docs", "health": "/api/health"}
+            return {"name": "Swapboard API", "docs": "/docs", "health": "/api/health"}
 
     return app
 

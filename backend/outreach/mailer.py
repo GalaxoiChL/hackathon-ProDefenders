@@ -103,7 +103,7 @@ class Mailer:
         msg["From"] = formataddr((self.s.sender_name, self.s.smtp_from or "outreach@localhost"))
         msg["To"] = to_addr
         msg["Subject"] = email["subject"]
-        msg["Message-ID"] = make_msgid(domain="prodefenders.local")
+        msg["Message-ID"] = make_msgid(domain="swapboard.local")
         msg["List-Unsubscribe"] = f"<{unsub}>"
         if to_addr != email["to_addr"]:
             msg["X-Original-To"] = email["to_addr"]

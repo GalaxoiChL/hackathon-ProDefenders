@@ -38,7 +38,7 @@ export default function OutreachTab() {
       />
       {available === false && (
         <p className="max-w-xl text-sm leading-relaxed text-ink-2">
-          Outreach runs on the ProDefenders API, which is not running. Start it with{" "}
+          Outreach runs on the Swapboard API, which is not running. Start it with{" "}
           <code className="font-mono text-xs">uvicorn backend.app:app --port 8000</code> and reload this page.
         </p>
       )}

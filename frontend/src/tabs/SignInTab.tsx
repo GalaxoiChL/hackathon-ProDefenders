@@ -99,7 +99,7 @@ export default function SignInTab() {
         </AnimatePresence>
 
         <p className="mt-8 border-t border-rule pt-5 text-sm text-ink-2">
-          New to ProDefenders?{" "}
+          New to Swapboard?{" "}
           <button
             type="button"
             onClick={() => setNote("Demo only: account requests are not available yet.")}

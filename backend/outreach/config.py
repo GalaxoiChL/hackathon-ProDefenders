@@ -22,8 +22,8 @@ class OutreachSettings:
     public_base_url: str = "http://localhost:8000"     # used in bid / unsubscribe links
     secret_key: str = ""                               # signs bid links; generated + stored if empty
     # sender identity (shown in every email; required by CAN-SPAM / EU e-commerce rules)
-    sender_name: str = "ProDefenders"
-    sender_company: str = "ProDefenders (ITFest 2026 demo)"
+    sender_name: str = "Swapboard"
+    sender_company: str = "Swapboard (ITFest 2026 demo)"
     sender_address: str = "București, România"
     # AI
     ollama_url: str = "http://localhost:11434"
@@ -31,7 +31,7 @@ class OutreachSettings:
     ai_enabled: bool = True
     # search
     brave_api_key: str = ""
-    user_agent: str = "ProDefenders-hackathon/1.0 (+https://github.com/GalaxoiChL/hackathon-ProDefenders)"
+    user_agent: str = "Swapboard-hackathon/1.0 (+https://github.com/GalaxoiChL/hackathon-ProDefenders)"
     http_timeout: float = 8.0
     # sending
     send_enabled: bool = False                         # master switch: False = drafts + outbox only

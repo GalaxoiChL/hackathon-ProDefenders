@@ -74,7 +74,7 @@ def fake_ollama(prompt: str) -> str:
         return json.dumps({"fit_score": score, "reason": "Local bakery near the filmed street",
                            "category": "food", "summary": "Family bakery", "brand_safe": True})
     return json.dumps({"subject": "Ihre Werbung im Video",
-                       "body": "Hallo,\nwir laden Sie ein: {BID_LINK}\nViele Grüße, ProDefenders"})
+                       "body": "Hallo,\nwir laden Sie ein: {BID_LINK}\nViele Grüße, Swapboard"})
 
 
 def osettings(root: Path, **kw) -> OutreachSettings:

@@ -122,6 +122,7 @@ Opțional, `"stats": { "frames": 480, "lost_frames": 12, "fps": 25, "width": 192
 - `GET /api/clips/{clip}/play?country=XX` (orice cod ISO) întoarce `{ viewer: {country, name, flag, market, region, match, source}, current: {code, video_url, ad_id, reason}, ad, ai_view_url, regions: [...] }`. `match` arată de ce s-a ales versiunea: `exact`, `language`, `subregion`, `continent` sau `default`.
 - `GET /api/clips/{clip}/stats?views=N` întoarce `{ spaces, visibility, brand_safety, regions: [{code, impressions, revenue_usd}], totals, cost_vs_value, assumptions }`
 - `POST /api/jobs {clip}` pornește pipeline-ul, iar `GET /api/jobs/{id}` arată progresul. La final se scrie `output/<clip>.manifest.json`.
+- **Marketplace (filme):** `GET /api/movies` întoarce tabelul de filme (un rând pe clip). `GET /api/movies/{clip}` întoarce locurile de reclamă din film (`places`, câte unul pe suprafața din `surfaces.json`), fiecare cu oferta pe fiecare țară (`offers`). `POST /api/placements/{id}/bids {company, email, amount_usd, category?, message?}` primește oferta oricărei firme. Un spațiu de vânzare are id-ul `clip:suprafață:ȚARĂ`, de exemplu `melbourne:s2:DE`. Emailurile ofertanților nu sunt publice.
 - Fișierele sunt servite la `/output/...`, `/assets/...` și `/data/...` (căile din manifest + `/` în față).
 
 ## Cum rulezi (o singură comandă)

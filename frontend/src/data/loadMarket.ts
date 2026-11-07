@@ -28,6 +28,8 @@ async function fetchJson<T>(path: string): Promise<T | undefined> {
 interface ApiPlacement {
   id: string;
   clip: string;
+  /** locul de reclamă din film (s1, s2...); id-ul e clip:suprafață:ȚARĂ */
+  surface_id?: string;
   market: string;
   market_name?: string;
   floor_usd: number;
@@ -54,9 +56,9 @@ async function loadFromApi(): Promise<MarketData | undefined> {
   const slots: Slot[] = placements.map((p) => ({
     id: p.id,
     clip: p.clip,
-    surface_id: "s1",
+    surface_id: p.surface_id ?? "s1",
     region: p.market,
-    title: `${p.clip.charAt(0).toUpperCase()}${p.clip.slice(1)} billboard`,
+    title: `${p.clip.charAt(0).toUpperCase()}${p.clip.slice(1)}, ad place ${(p.surface_id ?? "s1").replace(/^s/, "")}`,
     audience: p.expected_views,
     cpm: p.cpm_usd,
     currency: "USD",

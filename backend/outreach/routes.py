@@ -150,8 +150,12 @@ def build(settings: Settings, store: Store, o: OutreachSettings | None = None,
         return _page("Unsubscribed", f"<p><b>{html.escape(data['e'])}</b> will not receive any more "
                                      "emails from us.</p>")
 
+    # ---------------- movies marketplace (open bidding) ----------------
+    from ..marketplace import router as marketplace_router  # noqa: PLC0415
+    r.include_router(marketplace_router(settings, store, bids))
+
     # ---------------- placements & bids ----------------
-    @r.get("/api/placements", tags=["bids"], summary="Spațiile publicitare scoase la licitație (clip x piață)")
+    @r.get("/api/placements", tags=["bids"], summary="Spațiile publicitare scoase la licitație (clip x suprafață x țară)")
     def placements():
         return bids.placements()
 
@@ -169,7 +173,7 @@ def build(settings: Settings, store: Store, o: OutreachSettings | None = None,
             data = verify(token, bids.secret, "bid")
         except BadRequest as e:
             return _page("Invalid link", f"<p>{html.escape(str(e))}</p>", status=400)
-        p = bids.placement(data["c"], data["m"])
+        p = bids.placement(data["c"], data["m"], data.get("s", "s1"))
         lead = db.one("SELECT name FROM leads WHERE id=?", (data["l"],)) or {}
         video = None
         try:

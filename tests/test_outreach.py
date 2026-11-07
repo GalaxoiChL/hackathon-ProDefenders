@@ -275,7 +275,7 @@ def test_bid_page_and_bids(tmp_path):
     assert third["rank"] == 2 and third["leading"] is False
 
     pid = first["placement"]["id"]
-    assert pid == "demo:DE"
+    assert pid == "demo:s1:DE"
     bids = client.get(f"/api/placements/{pid}/bids").json()
     assert [b["amount_usd"] for b in bids] == [200, 150, 120]
     pl = next(p for p in client.get("/api/placements").json() if p["id"] == pid)

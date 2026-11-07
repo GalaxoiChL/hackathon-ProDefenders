@@ -112,7 +112,13 @@ ciornă ──(PATCH editează / approve / reject)──▶ aprobat ──(send,
 
 ⚠️ În unele țări (de ex. Germania) emailul comercial nesolicitat e interzis chiar și între firme. Pentru demo folosește `OUTREACH_TEST_RECIPIENT`.
 
-**3. Licitația**: fiecare clip × piață e un spațiu publicitar (`/api/placements`). Prețul minim e CPM-ul pieței × numărul de privitori, de exemplu DE: $10,5 × 10.000 / 1000 = $105. Firma deschide linkul din email (`/bid/<token>`), vede clipul și trimite oferta. Linkul e semnat (HMAC), deci nu poate fi falsificat sau ghicit. Cea mai mare ofertă câștigă: `/api/placements/{id}/bids`.
+**3. Licitația**: fiecare **loc de reclamă dintr-un film, într-o țară**, e un spațiu publicitar separat, cu id-ul `clip:suprafață:ȚARĂ` (de exemplu `melbourne:s2:DE`). Locurile de reclamă vin din `<clip>.surfaces.json`. Prețul minim e CPM-ul pieței × numărul de privitori, de exemplu DE: $10,5 × 10.000 / 1000 = $105. Cea mai mare ofertă câștigă.
+
+Firmele licitează pe două căi:
+- **Marketplace (deschis):** pe site, tabelul de filme → filmul → locul de reclamă → țara → ofertă (`POST /api/placements/{id}/bids`). O ofertă nouă a aceleiași firme (același email) o înlocuiește pe cea veche.
+- **Invitație:** linkul semnat (HMAC) din emailul de prospectare (`/bid/<token>`), care nu poate fi falsificat sau ghicit.
+
+Ofertele id-urilor vechi (`clip:ȚARĂ`, fără suprafață) sunt mutate automat pe primul loc de reclamă.
 
 | Metodă | Ruta | Ce face |
 |---|---|---|
@@ -124,7 +130,11 @@ ciornă ──(PATCH editează / approve / reject)──▶ aprobat ──(send,
 | POST | `/api/outreach/emails/{id}/approve` · `/reject` | aprobă sau respinge |
 | POST | `/api/outreach/campaigns/{id}/send` | `{confirm: true, approve_all?}` trimite emailurile aprobate |
 | GET | `/api/outreach/status` | dacă trimiterea e pornită, SMTP, limită, AI |
-| GET | `/api/placements`, `/api/placements/{id}/bids` | spațiile și ofertele |
+| GET | `/api/movies` | **tabelul de filme**: imagine, scenă, durată, locuri de reclamă, oferte, oferta maximă, preț minim |
+| GET | `/api/movies/{clip}` | locurile de reclamă din film, fiecare cu oferta pe fiecare țară |
+| GET | `/api/movies/{clip}/thumbnail.jpg`, `/places/{sid}.jpg` | imagini decupate din video (cache în `output/thumbs/`) |
+| POST | `/api/placements/{id}/bids` | **ofertă deschisă**: `{company, email, amount_usd, category?, message?}` |
+| GET | `/api/placements`, `/api/placements/{id}/bids` | spațiile și ofertele (fără emailuri) |
 | POST | `/api/bids` | `{token, amount_usd, company?, message?}` |
 | GET | `/bid/{token}` | pagina de licitație din email |
 

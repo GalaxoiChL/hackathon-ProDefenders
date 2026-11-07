@@ -1,295 +1,557 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+// Marketplace: un tabel cu filmele scoase la vânzare. Click pe un film -> locurile de reclamă din el,
+// fiecare cu o licitație separată pe țară, unde orice firmă locală își poate face oferta.
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { useSearchParams } from "react-router-dom";
 import { useMarket } from "../market";
-import { reserveFormula, reservePrice } from "../data/auction";
+import { apiAvailable, assetUrl } from "../data/loadClip";
+import {
+  CATEGORIES,
+  fetchBids,
+  fetchMovie,
+  fetchMovies,
+  moviesFromSlots,
+  postBid,
+  sampleBids,
+  type BidForm,
+  type BidResult,
+  type Movie,
+  type Offer,
+  type Place,
+  type PublicBid,
+} from "../data/movies";
 import { regionStyle } from "../regions";
-import type { Slot } from "../data/types";
-import { NavLink } from "react-router-dom";
-import { Button, CountryMark, CountUp, PageHeader, compact, dec, money, num, useNow, SampleDataNote } from "../components/ui";
-import { CountryPicker, Dropdown } from "../components/CountryPicker";
+import { Button, CountryMark, CountUp, PageHeader, compact, dec, money, num } from "../components/ui";
+import { CountryPicker } from "../components/CountryPicker";
 
-type StatusFilter = "all" | "open" | "closed";
+const REFRESH_MS = 15_000;
 
+// ---------------- data: backend if running, otherwise the sample market ----------------
+interface MovieMarket {
+  mode: "api" | "sample" | "loading";
+  movies: Movie[];
+  /** filmul complet (cu locurile și ofertele pe țări) */
+  useMovie: (clip: string) => { movie?: Movie; reload: () => void };
+  bidsFor: (offer: Offer) => Promise<PublicBid[]>;
+  submit: (offer: Offer, form: BidForm) => Promise<BidResult>;
+}
+
+function useMovieMarket(): MovieMarket {
+  const market = useMarket();
+  const [api, setApi] = useState<boolean | null>(null);
+  const [apiMovies, setApiMovies] = useState<Movie[] | null>(null);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    apiAvailable().then(setApi);
+  }, []);
+  useEffect(() => {
+    if (!api) return;
+    let live = true;
+    const load = () => fetchMovies().then((m) => live && setApiMovies(m ?? []));
+    load();
+    const t = window.setInterval(load, REFRESH_MS);
+    return () => {
+      live = false;
+      clearInterval(t);
+    };
+  }, [api, tick]);
+
+  const sample = useMemo(() => moviesFromSlots(market.slots, market.bids, market.isClosed), [market.slots, market.bids, market.isClosed]);
+  const mode: MovieMarket["mode"] = api === null || (api && apiMovies === null) ? "loading" : api && apiMovies!.length ? "api" : "sample";
+
+  const useMovie = (clip: string) => {
+    // hook apelat mereu în aceeași ordine din MovieView
+    const [movie, setMovie] = useState<Movie | undefined>();
+    const [n, setN] = useState(0);
+    useEffect(() => {
+      if (mode !== "api") return;
+      let live = true;
+      const load = () => fetchMovie(clip).then((m) => live && setMovie(m));
+      load();
+      const t = window.setInterval(load, REFRESH_MS);
+      return () => {
+        live = false;
+        clearInterval(t);
+      };
+    }, [clip, n, mode]); // mode: loading -> api la prima deschidere
+    const reload = useCallback(() => {
+      setN((x) => x + 1);
+      setTick((x) => x + 1);
+    }, []);
+    return { movie: mode === "api" ? movie : sample.find((m) => m.clip === clip), reload };
+  };
+
+  return {
+    mode,
+    movies: mode === "api" ? apiMovies! : mode === "sample" ? sample : [],
+    useMovie,
+    bidsFor: (offer) => (mode === "api" ? fetchBids(offer.id) : Promise.resolve(sampleBids(offer.id, market.bids, market.brands))),
+    submit: async (offer, form) => {
+      if (mode === "api") return postBid(offer.id, form);
+      const error = market.placeOpenBid(offer.id, form.company, form.category, form.amount);
+      if (error) return { ok: false, error };
+      const others = market.bids.filter((b) => b.slot_id === offer.id && !b.brand_id.endsWith(`:${form.company.trim().toLowerCase()}`));
+      const higher = others.filter((b) => b.amount > form.amount).length;
+      return { ok: true, rank: higher + 1, leading: higher === 0 };
+    },
+  };
+}
+
+// ---------------- tab ----------------
 export default function MarketplaceTab() {
-  const { slots, bids, isClosed, results, currency, source , waitingForBids } = useMarket();
-  const [country, setCountry] = useState("all");
-  const [status, setStatus] = useState<StatusFilter>("all");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-
-  const countries = [...new Set(slots.map((s) => s.region))];
-  const list = slots.filter(
-    (s) => (country === "all" || s.region === country) && (status === "all" || (status === "closed") === isClosed(s.id)),
+  const [params, setParams] = useSearchParams();
+  const data = useMovieMarket();
+  const clip = params.get("movie");
+  const open = (c: string | null) => {
+    setParams(c ? { movie: c } : {});
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div key={clip ?? "table"} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
+        {clip ? <MovieView clip={clip} data={data} onBack={() => open(null)} /> : <MoviesTable data={data} onOpen={open} />}
+      </motion.div>
+    </AnimatePresence>
   );
-  const selected = list.find((s) => s.id === selectedId) ?? list[0];
-  const openCount = slots.filter((s) => !isClosed(s.id)).length;
-  const sold = Object.values(results).reduce((sum, r) => sum + (r.price ?? 0), 0);
+}
+
+// ---------------- movies table ----------------
+const TABLE_COLS = "md:grid-cols-[128px_minmax(0,1fr)_64px_72px_120px_64px_96px_88px_16px]";
+
+function MoviesTable({ data, onOpen }: { data: MovieMarket; onOpen: (clip: string) => void }) {
+  const [query, setQuery] = useState("");
+  const [country, setCountry] = useState("all");
+  const all = data.movies;
+  const markets = [...new Set(all.flatMap((m) => m.markets))];
+  const list = all.filter(
+    (m) =>
+      (!query || `${m.title} ${m.subtitle ?? ""}`.toLowerCase().includes(query.toLowerCase())) &&
+      (country === "all" || m.markets.includes(country)),
+  );
+  const places = all.reduce((n, m) => n + m.places.length, 0);
+  const bids = all.reduce((n, m) => n + m.bids, 0);
 
   return (
     <>
       <PageHeader
-        eyebrow="For brands"
+        eyebrow="For local businesses"
         title="Marketplace"
-        lede={
-          source === "api"
-            ? "Every rendered clip is a billboard for sale in each market. Invited businesses bid through the signed link in their email; when an auction closes, the highest eligible bid wins and pays the second-highest price."
-            : "Brands bid on billboards inside approved scenes, market by market. Bids are sealed; when the auction closes, the highest eligible bid wins and pays the second-highest price."
-        }
+        lede="Movies with ad places for sale. Pick a movie, choose one of its billboards and the country where you want to be seen, then place your bid. Each place is a separate auction in every country: viewers there see the highest bidder's ad."
         aside={
           <dl className="flex gap-8">
-            <Figure label="Open auctions" value={openCount} format={num} />
-            <Figure label="Bids placed" value={bids.length} format={num} />
-            <Figure label="Sold to date" value={sold} format={(n) => money(n, currency)} />
+            <Figure label="Movies" value={all.length} />
+            <Figure label="Ad places" value={places} />
+            <Figure label="Bids placed" value={bids} />
           </dl>
         }
       />
-      <SampleDataNote show={waitingForBids} />
+      {data.mode === "sample" && (
+        <p className="-mt-6 mb-8 border-l-2 border-accent pl-3 text-sm text-ink-2">
+          Sample movies: start the server (backend/) to sell the clips you rendered. Bids placed here stay in this browser.
+        </p>
+      )}
 
       <div className="mb-6 flex flex-wrap items-end gap-4">
+        <label className="text-sm">
+          <span className="mb-1.5 block text-xs uppercase tracking-[0.14em] text-muted">Search</span>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Movie or scene"
+            className="w-64 border border-rule-strong bg-card px-3 py-2 text-sm text-ink outline-none focus:border-ink"
+          />
+        </label>
         <div className="text-sm">
-          <span className="mb-1.5 block text-xs uppercase tracking-[0.14em] text-muted">Market</span>
+          <span className="mb-1.5 block text-xs uppercase tracking-[0.14em] text-muted">Your market</span>
           <CountryPicker
-            allLabel="All markets"
+            allLabel="All countries"
             value={country}
             onChange={setCountry}
-            options={countries.map((c) => {
-              const n = slots.filter((s) => s.region === c).length;
-              return { code: c, detail: `${n} placement${n === 1 ? "" : "s"}` };
-            })}
-          />
-        </div>
-        <div className="text-sm">
-          <span className="mb-1.5 block text-xs uppercase tracking-[0.14em] text-muted">Status</span>
-          <Dropdown
-            label="Status"
-            className="min-w-44"
-            value={status}
-            onChange={(v) => setStatus(v as StatusFilter)}
-            options={[
-              { value: "all", label: "All auctions" },
-              { value: "open", label: "Open", color: "var(--positive)", detail: "Still taking bids" },
-              { value: "closed", label: "Closed", color: "var(--ink)", detail: "Sold or unsold" },
-            ]}
+            options={markets.map((c) => ({ code: c, detail: `${all.filter((m) => m.markets.includes(c)).length} movies` }))}
           />
         </div>
       </div>
 
-      <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_380px]">
-        <div>
-          <div className={`hidden gap-4 border-b border-ink pb-2 text-xs uppercase tracking-[0.12em] text-muted md:grid ${ROW_COLS}`}>
-            <span />
-            <span>Placement</span>
-            <span>Market</span>
-            <span className="text-right">Minimum</span>
-            <span>Status</span>
-          </div>
-          {list.length === 0 && <p className="py-10 text-sm text-muted">No placements match these filters.</p>}
-          {list.map((s) => (
-            <SlotRow key={s.id} slot={s} active={s.id === selected?.id} onSelect={() => setSelectedId(s.id)} />
-          ))}
+      <div role="table" aria-label="Movies for sale">
+        <div role="row" className={`hidden items-end gap-4 border-b border-ink pb-2 text-xs uppercase tracking-[0.12em] text-muted md:grid ${TABLE_COLS}`}>
+          <span role="columnheader" />
+          <span role="columnheader">Movie</span>
+          <span role="columnheader">Length</span>
+          <span role="columnheader">Places</span>
+          <span role="columnheader">Countries</span>
+          <span role="columnheader" className="text-right">Bids</span>
+          <span role="columnheader" className="text-right">Highest</span>
+          <span role="columnheader" className="text-right">From</span>
+          <span />
         </div>
-
-        <aside className="self-start lg:sticky lg:top-24">
-          <AnimatePresence mode="wait">
-            {selected && (
-              <motion.div key={selected.id} initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
-                <SlotDetail slot={selected} />
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </aside>
+        {data.mode === "loading" && <p className="py-10 text-sm text-muted">Loading movies…</p>}
+        {data.mode !== "loading" && list.length === 0 && <p className="py-10 text-sm text-muted">No movies match.</p>}
+        {list.map((m) => (
+          <button
+            key={m.clip}
+            role="row"
+            onClick={() => onOpen(m.clip)}
+            className={`group grid w-full grid-cols-[112px_minmax(0,1fr)] items-center gap-4 border-b border-rule py-4 pr-2 text-left transition-colors hover:bg-card ${TABLE_COLS}`}
+          >
+            <Poster movie={m} />
+            <div className="min-w-0" role="cell">
+              <p className="font-serif text-lg leading-snug group-hover:underline group-hover:decoration-rule-strong group-hover:underline-offset-4">{m.title}</p>
+              {m.subtitle && <p className="mt-0.5 truncate text-xs capitalize text-muted">{m.subtitle}</p>}
+              <p className="mt-2 text-xs text-ink-2 md:hidden">
+                {m.places.length} ad place{m.places.length === 1 ? "" : "s"} · {m.markets.length} countries · {m.bids} bids
+                {m.top_bid !== undefined && <> · top {money(m.top_bid, m.currency)}</>}
+              </p>
+            </div>
+            <span role="cell" className="hidden text-sm tabular-nums md:block">{m.duration_s !== undefined ? `${dec(m.duration_s)} s` : "—"}</span>
+            <span role="cell" className="hidden text-sm tabular-nums md:block">{m.places.length}</span>
+            <span role="cell" className="hidden md:block"><Flags codes={m.markets} /></span>
+            <span role="cell" className="hidden text-right text-sm tabular-nums md:block">{num(m.bids)}</span>
+            <span role="cell" className="hidden text-right text-sm font-medium tabular-nums md:block">{m.top_bid !== undefined ? money(m.top_bid, m.currency) : "—"}</span>
+            <span role="cell" className="hidden text-right text-sm tabular-nums text-muted md:block">{m.min_floor !== undefined ? money(m.min_floor, m.currency) : "—"}</span>
+            <span aria-hidden className="hidden text-muted transition-transform group-hover:translate-x-0.5 md:block">→</span>
+          </button>
+        ))}
       </div>
     </>
   );
 }
 
-function Figure({ label, value, format }: { label: string; value: number; format: (n: number) => string }) {
+function Figure({ label, value }: { label: string; value: number }) {
   return (
     <div>
       <dt className="text-xs text-muted">{label}</dt>
       <dd className="mt-1 font-serif text-2xl tabular-nums">
-        <CountUp value={value} format={format} />
+        <CountUp value={value} format={num} />
       </dd>
     </div>
   );
 }
 
-function Thumb({ slot, large = false }: { slot: Slot; large?: boolean }) {
+function Poster({ movie, large = false }: { movie: Movie; large?: boolean }) {
+  const [broken, setBroken] = useState(false);
   return (
-    <div className={`relative aspect-video overflow-hidden bg-screen ${large ? "w-full" : "w-[72px]"}`}>
-      {slot.thumbnail ? (
-        <img src={slot.thumbnail} alt="" className="h-full w-full object-cover" />
+    <div className={`relative aspect-video overflow-hidden bg-screen ${large ? "w-full" : "w-[112px] md:w-[128px]"}`}>
+      {movie.thumbnail_url && !broken ? (
+        <img src={assetUrl(movie.thumbnail_url)} alt="" onError={() => setBroken(true)} className="h-full w-full object-cover" />
       ) : (
-        <span className={`absolute inset-0 grid place-items-center font-serif capitalize text-[#d9d5cc] ${large ? "text-2xl" : "text-[11px]"}`}>{slot.clip}</span>
+        <span className="absolute inset-0 grid place-items-center font-serif text-sm text-[#d9d5cc]">{movie.title}</span>
       )}
-      <span className="absolute inset-x-0 bottom-0 h-[3px]" style={{ background: regionStyle(slot.region).color }} />
+      <span className="absolute bottom-1 right-1 bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white">
+        {movie.places.length} place{movie.places.length === 1 ? "" : "s"}
+      </span>
     </div>
   );
 }
 
-function StatusLabel({ slot }: { slot: Slot }) {
-  const { isClosed, results, deadlines } = useMarket();
-  const now = useNow();
-  if (!isClosed(slot.id)) {
-    const deadline = deadlines[slot.id];
-    const left = Math.max(0, (deadline ?? now) - now) / 1000;
-    return (
-      <span className="inline-flex items-center gap-2 text-sm">
-        <span className="size-1.5 animate-pulse rounded-full bg-positive" />
-        <span className="tabular-nums">
-          {deadline === undefined ? "Open" : `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, "0")} left`}
+/** Steaguri colorate (culoarea țării), primele 5 + câte mai sunt. */
+function Flags({ codes }: { codes: string[] }) {
+  const shown = codes.slice(0, 5);
+  return (
+    <span className="inline-flex items-center gap-1" title={codes.map((c) => regionStyle(c).name).join(", ")}>
+      {shown.map((c) => (
+        <span key={c} className="grid h-5 w-6 place-items-center text-[9px] font-semibold text-white" style={{ background: regionStyle(c).color }}>
+          {c}
         </span>
-      </span>
+      ))}
+      {codes.length > shown.length && <span className="pl-0.5 text-xs text-muted">+{codes.length - shown.length}</span>}
+    </span>
+  );
+}
+
+// ---------------- one movie: its ad places, one auction per country ----------------
+function MovieView({ clip, data, onBack }: { clip: string; data: MovieMarket; onBack: () => void }) {
+  const { movie, reload } = data.useMovie(clip);
+  const [country, setCountry] = useState("all");
+  const [openOffer, setOpenOffer] = useState<string | null>(null);
+
+  if (!movie) {
+    return (
+      <div>
+        <BackLink onClick={onBack} />
+        <p className="py-16 text-sm text-muted">{data.mode === "loading" || data.mode === "api" ? "Loading the movie…" : `No movie called “${clip}”.`}</p>
+      </div>
     );
   }
-  const r = results[slot.id];
-  return r?.price !== undefined ? <span className="text-sm">Sold · {money(r.price, slot.currency)}</span> : <span className="text-sm text-muted">Unsold</span>;
-}
 
-const ROW_COLS = "md:grid-cols-[72px_minmax(0,1fr)_112px_84px_112px]";
-
-function SlotRow({ slot, active, onSelect }: { slot: Slot; active: boolean; onSelect: () => void }) {
   return (
-    <button
-      onClick={onSelect}
-      className={`relative grid w-full grid-cols-[72px_minmax(0,1fr)] items-center gap-4 border-b border-rule py-4 pr-2 text-left transition-colors ${ROW_COLS} ${
-        active ? "bg-card" : "hover:bg-card/60"
-      }`}
-    >
-      {active && <motion.span layoutId="slot-active" className="absolute inset-y-0 -left-3 w-[2px] bg-ink" />}
-      <Thumb slot={slot} />
-      <div className="min-w-0">
-        <p className="font-serif text-base leading-snug">{slot.title}</p>
-        <p className="mt-0.5 text-xs text-muted">
-          {slot.screen_time_sec !== undefined ? `${dec(slot.screen_time_sec)} s on screen` : `${compact(slot.audience)} expected views`}
-          {slot.categories?.length ? <> · <span className="capitalize">{slot.categories.join(", ")}</span></> : null}
-        </p>
-        <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 md:hidden">
-          <CountryMark code={slot.region} />
-          <StatusLabel slot={slot} />
+    <div>
+      <BackLink onClick={onBack} />
+      <header className="mb-8 mt-4 grid gap-8 border-b border-rule pb-8 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-accent">Movie</p>
+          <h1 className="mt-3 font-serif text-4xl font-medium tracking-tight sm:text-5xl">{movie.title}</h1>
+          <p className="mt-3 text-[15px] text-ink-2">
+            {movie.subtitle && <span className="capitalize">{movie.subtitle}</span>}
+            {movie.subtitle && movie.duration_s !== undefined && " · "}
+            {movie.duration_s !== undefined && `${dec(movie.duration_s)} s`}
+          </p>
+          <div className="mt-6">
+            {movie.video_url ? (
+              <video
+                key={movie.video_url}
+                src={assetUrl(movie.video_url)}
+                poster={movie.thumbnail_url ? assetUrl(movie.thumbnail_url) : undefined}
+                controls
+                muted
+                playsInline
+                preload="metadata"
+                className="aspect-video w-full bg-screen"
+              />
+            ) : (
+              <Poster movie={movie} large />
+            )}
+          </div>
         </div>
-      </div>
-      <span className="hidden md:block">
-        <CountryMark code={slot.region} />
-      </span>
-      <span className="hidden text-right text-sm tabular-nums md:block">{money(reservePrice(slot), slot.currency)}</span>
-      <span className="hidden md:block">
-        <StatusLabel slot={slot} />
-      </span>
-    </button>
+        <aside className="self-end">
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-5">
+            <Fact label="Ad places" value={movie.places.length} />
+            <Fact label="Countries" value={movie.markets.length} />
+            <Fact label="Bids so far" value={num(movie.bids)} />
+            <Fact label="Highest bid" value={movie.top_bid !== undefined ? money(movie.top_bid, movie.currency) : "—"} />
+          </dl>
+          <p className="mt-6 text-sm leading-relaxed text-ink-2">
+            Every ad place is sold separately in every country. Viewers in a country see the ad of the business that wins that country's
+            auction; the rest of the world sees someone else.
+          </p>
+          <div className="mt-5 text-sm">
+            <span className="mb-1.5 block text-xs uppercase tracking-[0.14em] text-muted">Show country</span>
+            <CountryPicker
+              allLabel="All countries"
+              value={country}
+              onChange={(c) => {
+                setCountry(c);
+                setOpenOffer(null);
+              }}
+              options={movie.markets.map((c) => ({ code: c }))}
+            />
+          </div>
+        </aside>
+      </header>
+
+      {movie.places.map((p) => (
+        <PlaceSection
+          key={p.id}
+          place={p}
+          movie={movie}
+          country={country}
+          openOffer={openOffer}
+          onToggle={(id) => setOpenOffer((cur) => (cur === id ? null : id))}
+          data={data}
+          onBid={reload}
+        />
+      ))}
+    </div>
   );
 }
 
-function SlotDetail({ slot }: { slot: Slot }) {
-  const { isClosed, closeAuction, source } = useMarket();
-  const closed = isClosed(slot.id);
+function BackLink({ onClick }: { onClick: () => void }) {
   return (
-    <div>
-      <p className="text-xs uppercase tracking-[0.14em] text-accent">Placement</p>
-      <h3 className="mt-2 font-serif text-2xl leading-tight">{slot.title}</h3>
-      <p className="mt-1 text-sm text-muted capitalize">
-        {slot.clip} · surface {slot.surface_id}
-      </p>
-      <div className="mt-5">
-        <Thumb slot={slot} large />
-      </div>
-      <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
-        <Fact label="Market" value={<CountryMark code={slot.region} />} />
-        {slot.screen_time_sec !== undefined && <Fact label="On screen" value={`${dec(slot.screen_time_sec)} s`} />}
-        {slot.visibility !== undefined && <Fact label="Visibility" value={`${dec(slot.visibility)} / 10`} />}
-        <Fact label={slot.floor !== undefined ? "Expected views" : "Audience"} value={compact(slot.audience)} />
-        <Fact label="CPM" value={money(slot.cpm, slot.currency)} />
-        <Fact label="Minimum price" value={<b>{money(reservePrice(slot), slot.currency)}</b>} />
-      </dl>
-      <p className="mt-3 text-xs leading-relaxed text-muted">
-        {reserveFormula(slot)}
-        {slot.categories?.length ? (
-          <>
-            {" "}Accepts <span className="capitalize">{slot.categories.join(", ")}</span>.
-          </>
-        ) : null}
-      </p>
-
-      <div className="mt-6 border-t border-ink pt-5">
-        {closed ? (
-          <Result slot={slot} />
-        ) : (
-          <>
-            {source === "api" ? <InvitationNote /> : <BidForm slot={slot} />}
-            <BidsReceived slot={slot} />
-            <Button variant="link" className="mt-5 text-muted" onClick={() => closeAuction(slot.id)}>
-              End this auction now (demo)
-            </Button>
-          </>
-        )}
-      </div>
-    </div>
+    <button onClick={onClick} className="text-sm text-ink-2 underline decoration-rule-strong underline-offset-4 hover:decoration-ink">
+      ← All movies
+    </button>
   );
 }
 
 function Fact({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div>
-      <dt className="text-xs text-muted">{label}</dt>
-      <dd className="mt-0.5 tabular-nums">{value}</dd>
+    <div className="border-t border-ink pt-2">
+      <dt className="text-xs uppercase tracking-[0.12em] text-muted">{label}</dt>
+      <dd className="mt-1 font-serif text-2xl tabular-nums">{value}</dd>
     </div>
   );
 }
 
-function BidForm({ slot }: { slot: Slot }) {
-  const { brands, placeBid } = useMarket();
-  const local = brands.filter((b) => b.region === slot.region);
-  const [brandId, setBrandId] = useState(local[0]?.id ?? "");
-  const [amount, setAmount] = useState("");
-  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+const OFFER_COLS = "grid-cols-[minmax(0,1fr)_88px_auto] sm:grid-cols-[minmax(0,1fr)_96px_56px_104px_88px]";
 
-  const submit = (e: FormEvent) => {
+function PlaceSection({
+  place,
+  movie,
+  country,
+  openOffer,
+  onToggle,
+  data,
+  onBid,
+}: {
+  place: Place;
+  movie: Movie;
+  country: string;
+  openOffer: string | null;
+  onToggle: (id: string) => void;
+  data: MovieMarket;
+  onBid: () => void;
+}) {
+  const offers = place.offers.filter((o) => country === "all" || o.market === country);
+  const [broken, setBroken] = useState(false);
+  return (
+    <section className="mb-14">
+      <div className="mb-5 flex flex-wrap items-baseline justify-between gap-3 border-b border-rule pb-3">
+        <h2 className="font-serif text-2xl font-medium tracking-tight">
+          {place.label}
+          {place.type && <span className="ml-2 text-base capitalize text-muted">· {place.type}</span>}
+        </h2>
+        <p className="text-sm text-muted">
+          {[
+            place.frame_share_pct !== undefined ? `${dec(place.frame_share_pct)}% of the frame` : undefined,
+            place.confidence !== undefined ? `found by AI with ${Math.round(place.confidence * 100)}% confidence` : undefined,
+            `${place.bids} bid${place.bids === 1 ? "" : "s"}`,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+      </div>
+
+      <div className="grid gap-8 lg:grid-cols-[280px_minmax(0,1fr)]">
+        <figure className="self-start">
+          <div className="relative aspect-[4/3] overflow-hidden bg-screen">
+            {place.image_url && !broken ? (
+              <img src={assetUrl(place.image_url)} alt={`${place.label} in ${movie.title}`} onError={() => setBroken(true)} className="h-full w-full object-cover" />
+            ) : (
+              <span className="absolute inset-0 grid place-items-center px-4 text-center font-serif text-sm text-[#d9d5cc]">
+                {place.label}
+                <br />
+                {movie.title}
+              </span>
+            )}
+          </div>
+          <figcaption className="mt-2 text-xs leading-relaxed text-muted">
+            Outlined: where your ad goes. It follows the camera and stays behind people walking past.
+          </figcaption>
+        </figure>
+
+        <div role="table" aria-label={`${place.label}: one auction per country`}>
+          <div role="row" className={`grid gap-3 border-b border-ink pb-2 text-xs uppercase tracking-[0.12em] text-muted ${OFFER_COLS}`}>
+            <span role="columnheader">Country</span>
+            <span role="columnheader" className="hidden text-right sm:block">Minimum</span>
+            <span role="columnheader" className="hidden text-right sm:block">Bids</span>
+            <span role="columnheader" className="text-right">Highest</span>
+            <span />
+          </div>
+          {offers.map((o) => (
+            <OfferRow key={o.id} offer={o} open={openOffer === o.id} onToggle={() => onToggle(o.id)} data={data} onBid={onBid} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function OfferRow({ offer, open, onToggle, data, onBid }: { offer: Offer; open: boolean; onToggle: () => void; data: MovieMarket; onBid: () => void }) {
+  const closed = offer.status === "closed";
+  return (
+    <div role="rowgroup" className={`border-b border-rule ${open ? "bg-card" : ""}`}>
+      <div role="row" className={`grid items-center gap-3 py-3 ${OFFER_COLS} ${open ? "px-3" : ""} transition-[padding]`}>
+        <span role="cell">
+          <CountryMark code={offer.market} />
+        </span>
+        <span role="cell" className="hidden text-right text-sm tabular-nums text-muted sm:block">{money(offer.floor, offer.currency)}</span>
+        <span role="cell" className="hidden text-right text-sm tabular-nums sm:block">{offer.bids}</span>
+        <span role="cell" className="text-right text-sm font-medium tabular-nums">{offer.top_bid !== undefined ? money(offer.top_bid, offer.currency) : "—"}</span>
+        <span role="cell" className="text-right">
+          {closed ? (
+            <span className="text-sm text-muted">Closed</span>
+          ) : (
+            <Button variant={open ? "secondary" : "primary"} className="!px-4 !py-1.5" onClick={onToggle}>
+              {open ? "Close" : "Bid"}
+            </Button>
+          )}
+        </span>
+      </div>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22 }} className="overflow-hidden">
+            <div className="grid gap-8 px-3 pb-6 pt-2 md:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
+              <BidPanel offer={offer} data={data} onBid={onBid} />
+              <BidsList offer={offer} data={data} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+const field = "mt-1 block w-full border border-rule-strong bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-ink";
+
+function BidPanel({ offer, data, onBid }: { offer: Offer; data: MovieMarket; onBid: () => void }) {
+  const [form, setForm] = useState<BidForm>({ company: "", email: "", category: offer.categories?.[0] ?? "food", amount: Math.ceil(offer.floor), message: "" });
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const set = <K extends keyof BidForm>(k: K, v: BidForm[K]) => setForm((f) => ({ ...f, [k]: v }));
+  const symbol = offer.currency === "USD" ? "$" : "€";
+
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
-    const error = placeBid(slot.id, brandId, Number(amount));
-    setMsg(error ? { ok: false, text: error } : { ok: true, text: "Sealed bid placed. Amounts stay hidden until the auction closes." });
-    if (!error) setAmount("");
+    setBusy(true);
+    const r = await data.submit(offer, form);
+    setBusy(false);
+    if (!r.ok) return setMsg({ ok: false, text: r.error });
+    setMsg({ ok: true, text: r.leading ? "Bid placed. You are the highest bidder for this place in this country." : `Bid placed. You are #${r.rank}; raise it to lead.` });
+    onBid();
   };
 
   return (
     <form onSubmit={submit}>
-      <p className="font-serif text-lg">Place a bid</p>
-      <label className="mt-3 block text-xs text-muted">
-        Company
-        <select value={brandId} onChange={(e) => setBrandId(e.target.value)} className="mt-1 block w-full border border-rule-strong bg-card px-3 py-2 text-sm text-ink outline-none focus:border-ink">
-          {local.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.brand} ({b.category})
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="mt-3 block text-xs text-muted">
-        Your bid
-        <span className="mt-1 flex items-center border border-rule-strong bg-card focus-within:border-ink">
-          <span className="pl-3 text-sm text-muted">{slot.currency === "USD" ? "$" : "€"}</span>
+      <p className="font-serif text-lg">
+        Bid for {regionStyle(offer.market).name}
+      </p>
+      <p className="mt-1 text-xs text-muted">
+        Minimum {money(offer.floor, offer.currency)} · about {compact(offer.expected_views)} viewers · {money(offer.cpm, offer.currency)} CPM
+      </p>
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <label className="block text-xs text-muted">
+          Company
+          <input required minLength={2} value={form.company} onChange={(e) => set("company", e.target.value)} placeholder="Your business name" className={field} />
+        </label>
+        <label className="block text-xs text-muted">
+          Contact email
           <input
-            type="number"
-            inputMode="numeric"
-            min={0}
-            step={100}
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            placeholder={num(reservePrice(slot))}
-            className="w-full bg-transparent px-2 py-2 text-sm text-ink tabular-nums outline-none"
+            required
+            type="email"
+            value={form.email}
+            onChange={(e) => set("email", e.target.value)}
+            placeholder="you@business.com"
+            className={field}
           />
-        </span>
+        </label>
+        <label className="block text-xs text-muted">
+          Category
+          <select value={form.category} onChange={(e) => set("category", e.target.value)} className={`${field} capitalize`}>
+            {[...new Set([...(offer.categories ?? []), ...CATEGORIES])].map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-xs text-muted">
+          Your bid
+          <span className="mt-1 flex items-center border border-rule-strong bg-paper focus-within:border-ink">
+            <span className="pl-3 text-sm text-muted">{symbol}</span>
+            <input
+              required
+              type="number"
+              inputMode="numeric"
+              min={Math.ceil(offer.floor)}
+              step={1}
+              value={Number.isFinite(form.amount) ? form.amount : ""}
+              onChange={(e) => set("amount", Number(e.target.value))}
+              className="w-full bg-transparent px-2 py-2 text-sm tabular-nums text-ink outline-none"
+            />
+          </span>
+        </label>
+      </div>
+      <label className="mt-3 block text-xs text-muted">
+        Message (optional)
+        <textarea rows={2} value={form.message} onChange={(e) => set("message", e.target.value)} placeholder="What you would like to show" className={field} />
       </label>
-      <Button type="submit" className="mt-4 w-full" disabled={!brandId}>
-        Place sealed bid
+      <Button type="submit" className="mt-4 w-full sm:w-auto" disabled={busy}>
+        {busy ? "Placing…" : `Place bid · ${symbol}${num(form.amount || 0)}`}
       </Button>
+      <p className="mt-2 text-xs text-muted">Your email is only shared with the movie owner. Bidding again replaces your previous bid.</p>
       <AnimatePresence>
         {msg && (
-          <motion.p
-            key={msg.text}
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0 }}
-            className={`mt-3 text-sm ${msg.ok ? "text-positive" : "text-accent"}`}
-          >
+          <motion.p key={msg.text} role="status" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className={`mt-3 text-sm ${msg.ok ? "text-positive" : "text-accent"}`}>
             {msg.text}
           </motion.p>
         )}
@@ -298,89 +560,63 @@ function BidForm({ slot }: { slot: Slot }) {
   );
 }
 
-/** Cu backend-ul, ofertele vin doar prin linkul semnat din emailul de invitație (backend/outreach/bids.py). */
-function InvitationNote() {
+/** Backend-ul salvează categoria în fața mesajului: "[food] text". */
+function BidNote({ message }: { message?: string }) {
+  if (!message) return null;
+  const m = /^\[([^\]]+)\]\s*(.*)$/s.exec(message);
+  const [category, text] = m ? [m[1], m[2]] : [undefined, message];
   return (
-    <div>
-      <p className="font-serif text-lg">How businesses bid</p>
-      <p className="mt-2 text-sm leading-relaxed text-ink-2">
-        Each invited business gets a signed link in its email and bids from there, so bids cannot be placed from this page. New bids
-        appear here on their own.
-      </p>
-      <NavLink to="/outreach" className="mt-4 inline-block text-sm font-medium underline decoration-rule-strong underline-offset-4 hover:decoration-ink">
-        Invite businesses in Outreach
-      </NavLink>
-    </div>
+    <span className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-muted">
+      {category && <span className="shrink-0 border border-rule-strong px-1.5 capitalize">{category}</span>}
+      {text && <span className="truncate">{text}</span>}
+    </span>
   );
 }
 
-function BidsReceived({ slot }: { slot: Slot }) {
-  const { bids, brands, source } = useMarket();
-  const list = bids.filter((b) => b.slot_id === slot.id).sort((a, b) => b.placed_at.localeCompare(a.placed_at));
+function BidsList({ offer, data }: { offer: Offer; data: MovieMarket }) {
+  const [bids, setBids] = useState<PublicBid[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    const load = () => data.bidsFor(offer).then((b) => live && setBids(b));
+    load();
+    const t = window.setInterval(load, REFRESH_MS);
+    return () => {
+      live = false;
+      clearInterval(t);
+    };
+    // offer.bids / top_bid change after every new bid: reload the list then
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offer.id, offer.bids, offer.top_bid]);
+
   return (
-    <div className="mt-8">
-      <p className="text-xs uppercase tracking-[0.14em] text-muted">Bids received · {list.length}</p>
-      <ul className="mt-2">
+    <div>
+      <p className="text-xs uppercase tracking-[0.14em] text-muted">Bids for this place in {regionStyle(offer.market).name} · {bids?.length ?? "…"}</p>
+      {bids && bids.length === 0 && <p className="mt-3 text-sm text-ink-2">No bids yet. The first one at or above the minimum leads.</p>}
+      <ol className="mt-2">
         <AnimatePresence initial={false}>
-          {list.map((b) => (
+          {bids?.map((b, i) => (
             <motion.li
               key={b.id}
               layout
               initial={{ opacity: 0, y: -6 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.25 }}
-              className="flex items-baseline justify-between border-b border-rule py-2 text-sm"
+              className="grid grid-cols-[20px_minmax(0,1fr)_auto] items-baseline gap-2 border-b border-rule py-2 text-sm"
             >
-              <span>{brands.find((x) => x.id === b.brand_id)?.brand ?? b.brand_id}</span>
-              <span className="font-mono text-xs text-muted">
-                {source === "api" ? money(b.amount, slot.currency) : "sealed"} ·{" "}
-                {new Date(b.placed_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+              <span className="text-xs tabular-nums text-muted">{i + 1}</span>
+              <span className="min-w-0">
+                <span className={i === 0 ? "font-medium" : ""}>{b.company}</span>
+                <BidNote message={b.message} />
+              </span>
+              <span className="text-right tabular-nums">
+                {money(b.amount, offer.currency)}
+                <span className="block text-[11px] text-muted">
+                  {new Date(b.placed_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                </span>
               </span>
             </motion.li>
           ))}
         </AnimatePresence>
-      </ul>
+      </ol>
     </div>
-  );
-}
-
-const OUTCOME = {
-  won: { label: "Won", cls: "text-positive" },
-  lost: { label: "Lost", cls: "text-muted" },
-  rejected: { label: "Rejected", cls: "text-accent" },
-} as const;
-
-function Result({ slot }: { slot: Slot }) {
-  const { results, brands } = useMarket();
-  const r = results[slot.id];
-  const name = (id: string) => brands.find((b) => b.id === id)?.brand ?? id;
-  if (!r) return null;
-  return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
-      {r.winner && r.price !== undefined ? (
-        <>
-          <p className="text-xs uppercase tracking-[0.14em] text-muted">Sold to</p>
-          <p className="mt-1 font-serif text-3xl">{name(r.winner.brand_id)}</p>
-          <p className="mt-2 text-sm">
-            Pays <b className="tabular-nums">{money(r.price, slot.currency)}</b> <span className="text-muted">· bid {money(r.winner.amount, slot.currency)}</span>
-          </p>
-          <p className="mt-2 text-xs leading-relaxed text-muted">Second-price rule: the winner pays the next-highest eligible bid, never less than the minimum price.</p>
-        </>
-      ) : (
-        <p className="text-sm text-ink-2">No eligible bids. The placement stays unsold and viewers see the original scene.</p>
-      )}
-      <ul className="mt-6">
-        {r.outcomes.map((o) => (
-          <li key={o.bid.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 border-b border-rule py-2.5 text-sm">
-            <span>{name(o.bid.brand_id)}</span>
-            <span className="tabular-nums">{money(o.bid.amount, slot.currency)}</span>
-            <span className={`text-xs ${OUTCOME[o.status].cls}`}>
-              {OUTCOME[o.status].label}
-              {o.reason && o.status !== "won" ? ` · ${o.reason}` : ""}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </motion.div>
   );
 }

@@ -136,8 +136,10 @@ class Outreach:
         lead = self.db.one("SELECT * FROM leads WHERE id=?", (lead_id,))
         floor = self.bids.floor_usd(market)
         mail = self.mailer.compose(lead, market, scene, floor, self.s.default_views)
+        # invite to the movie's most prominent ad place (the detector's most confident surface)
+        best = max(self.bids.surfaces(clip), key=lambda sf: sf["confidence"] or 0)["id"]
         body = self.mailer.finalize(mail["body"], lead,
-                                    self.bids.bid_link(self.o.public_base_url, lead_id, clip, market),
+                                    self.bids.bid_link(self.o.public_base_url, lead_id, clip, market, surface=best),
                                     self.bids.unsubscribe_link(self.o.public_base_url, lead["email"]))
         return self.db.insert("emails", {"campaign_id": cid, "lead_id": lead_id, "to_addr": lead["email"],
                                          "subject": mail["subject"], "body": body, "language": mail["language"],

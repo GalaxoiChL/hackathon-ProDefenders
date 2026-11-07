@@ -23,6 +23,8 @@ interface MarketState {
   results: Record<string, AuctionResult>;
   /** Întoarce motivul refuzului, sau null dacă oferta a fost acceptată. */
   placeBid: (slotId: string, brandId: string, amount: number) => string | null;
+  /** Ofertă deschisă, fără backend: orice firmă (nu doar cele din ads.json); null dacă a fost acceptată. */
+  placeOpenBid: (slotId: string, company: string, category: string, amount: number) => string | null;
   closeAuction: (slotId: string) => void;
 }
 
@@ -34,6 +36,8 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   const [bids, setBids] = useState<Bid[]>([]);
   const [deadlines, setDeadlines] = useState<Record<string, number>>({});
   const [closed, setClosed] = useState<Set<string>>(new Set());
+  /** firmele care au licitat din Marketplace fără backend (nu sunt în ads.json) */
+  const [walkIns, setWalkIns] = useState<Ad[]>([]);
   const slots = useMemo(() => market?.slots ?? [], [market]);
 
   // Companiile: cu backend, reclamele lui + cine a licitat prin el; cu datele de test, doar brandurile de test,
@@ -46,9 +50,9 @@ export function MarketProvider({ children }: { children: ReactNode }) {
         : market?.source === "files"
           ? [...(loaded ?? []), ...(mockAds as Ad[])]
           : (mockAds as Ad[]);
-    for (const a of all) if (!byId.has(a.id)) byId.set(a.id, a);
+    for (const a of [...all, ...walkIns]) if (!byId.has(a.id)) byId.set(a.id, a);
     return [...byId.values()];
-  }, [loaded, market]);
+  }, [loaded, market, walkIns]);
 
   /** Pornește de la zero cu o sursă nouă (prima încărcare, sau trecerea de la datele de test la backend). */
   const start = useCallback((m: MarketData) => {
@@ -115,6 +119,27 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     [slots, brands, closed],
   );
 
+  const placeOpenBid = useCallback(
+    (slotId: string, company: string, category: string, amount: number) => {
+      const slot = slots.find((s) => s.id === slotId);
+      const name = company.trim();
+      if (!slot || closed.has(slotId)) return "This auction is closed";
+      if (name.length < 2) return "Enter your company name";
+      if (!Number.isFinite(amount) || amount <= 0) return "Enter an amount";
+      const id = `walkin:${slot.region}:${name.toLowerCase()}`;
+      const brand: Ad = { id, region: slot.region, brand: name, category: category || undefined };
+      const reason = ineligibility(slot, brand, amount);
+      if (reason) return reason;
+      setWalkIns((list) => (list.some((b) => b.id === id) ? list : [...list, brand]));
+      setBids((list) => [
+        ...list.filter((b) => !(b.slot_id === slotId && b.brand_id === id)),
+        { id: `u${Date.now()}`, slot_id: slotId, brand_id: id, amount, placed_at: new Date().toISOString() },
+      ]);
+      return null;
+    },
+    [slots, closed],
+  );
+
   const value: MarketState = {
     slots,
     bids,
@@ -126,6 +151,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     isClosed: (id) => closed.has(id),
     results,
     placeBid,
+    placeOpenBid,
     closeAuction,
   };
   return <MarketContext.Provider value={value}>{children}</MarketContext.Provider>;

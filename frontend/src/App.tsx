@@ -51,32 +51,7 @@ function Shell() {
           </AnimatePresence>
         )}
       </main>
-      <Footer tabCount={tabs.length} />
     </div>
-  );
-}
-
-function Footer({ tabCount }: { tabCount: number }) {
-  const { data } = useApp();
-  return (
-    <footer className="border-t border-rule">
-      <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-1 px-4 py-5 text-xs text-muted sm:px-6">
-        <span className="font-serif text-sm text-ink">ProDefenders</span>
-        <span>ITFest 2026 prototype</span>
-        <span>
-          {data?.source === "api"
-            ? "Connected to the ProDefenders API"
-            : data?.source === "media"
-              ? "Team videos from the repo (demo/media)"
-              : data?.source === "session"
-                ? "Your upload: it lives only in this tab"
-                : data?.source === "live"
-              ? "Videos and data from output/ (API not running)"
-              : "Sample data: no rendered clip found"}
-        </span>
-        <span className="ml-auto hidden sm:inline">Keys 1–{tabCount} switch tabs</span>
-      </div>
-    </footer>
   );
 }
 

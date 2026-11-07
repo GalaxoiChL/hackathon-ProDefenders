@@ -1,5 +1,8 @@
 {
   "clip": "melbourne",
+  "original": "media/melbourne/original.mp4",
+  "duration_sec": 9.0,
+  "fps": 30.0,
   "ai_view": "media/melbourne/ai_view.mp4",
   "surface": {
     "id": "s1",
@@ -139,6 +142,7 @@
       "ad_id": "ro-pizza-hut",
       "brand": "Pizza Hut",
       "creative": "media/melbourne/ro_creative.png",
+      "creative_method": "ai-expand",
       "reason": "Consider că Pizza Hut ar fi cea mai potrivită variantă. Scena este într-o intersecție aglomerată din Melbourne, la prânz, cu vreme înnorată – perfect pentru un public urban, probabil studenți sau grupuri de prieteni care caută o masă rapidă. Mesajul despre Pizza Bar Nelimitat, oferit între 12:00 și 15:00, se potrivește perfect cu momentul și locația scenei.",
       "fit_score": 90
     },
@@ -149,12 +153,10 @@
       "ad_id": "jp-mcdonalds",
       "brand": "McDonald's",
       "creative": "media/melbourne/jp_creative.png",
+      "creative_method": "smart-crop",
       "reason": "Având în vedere că scena este într-o zonă urbană, Melbourne, la prânz, cu vreme înnorată, un McDonald's fries ar fi o opțiune excelentă pentru o gustare rapidă. Publicul țintă, o combinație de turiști și localnici, ar fi interesat de o ofertă de mâncare, iar mesajul publicitar specific (fripturi mari) se potrivește perfect cu atmosfera urbană și timpul de zi.",
       "fit_score": 85
     }
   ],
-  "original": "media/melbourne/original.mp4",
-  "duration_sec": 9,
-  "fps": 30,
-  "published": "2026-11-07T13:45:07+0200"
+  "published": "2026-11-07T14:17:23+0200"
 }

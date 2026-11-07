@@ -1,12 +1,25 @@
-// De unde vin datele unui clip, în ordine: serverul din backend/ (API), fișierele din output/, apoi datele de test.
+// De unde vin datele unui clip, în ordine: serverul din backend/ (API), clipurile publicate în demo/media,
+// randările locale din output/, apoi datele de test.
 import type { Ad, ClipData, Manifest, ManifestRegion, Scene, Surface, Surfaces, Viewer } from "./types";
 import mockManifest from "./mock/melbourne.manifest.json";
 import mockScene from "./mock/melbourne.scene.json";
 import mockSurfaces from "./mock/melbourne.surfaces.json";
 import mockAds from "./mock/ads.json";
 
-/** Căile din manifest sunt relative la rădăcina repo-ului; vite.config.ts (sau backend-ul) le servește la "/". */
-export const assetUrl = (p: string) => "/" + p.replace(/^\/+/, "");
+/**
+ * Căile din manifest sunt relative: în dev, vite.config.ts le servește de la rădăcina repo-ului;
+ * în demo/index.html deschis de pe disc, "media/..." e lângă pagină. Căile absolute și blob: rămân neschimbate.
+ */
+export const assetUrl = (p: string) => (/^([a-z]+:|\/)/i.test(p) ? p : `./${p}`);
+
+declare global {
+  interface Window {
+    /** Scris de demo/media/catalog.js (pipeline/publish_media.py), încărcat din index.html. */
+    __PRODEFENDERS_MEDIA__?: { clips?: RawManifest[] };
+  }
+}
+/** Clipurile publicate, așa cum le vede o pagină deschisă de pe disc (care nu poate citi fișiere JSON). */
+const catalog = (): RawManifest[] => window.__PRODEFENDERS_MEDIA__?.clips ?? [];
 
 async function fetchJson<T>(path: string, timeoutMs = 8000): Promise<T | undefined> {
   try {
@@ -82,6 +95,7 @@ export async function listClips(): Promise<string[]> {
   const names = new Set<string>();
   if (await apiAvailable()) (await fetchJson<{ clip: string }[]>("api/clips"))?.forEach((c) => names.add(c.clip));
   (await fetchMediaIndex())?.clips?.forEach((c) => names.add(c.clip));
+  catalog().forEach((m) => names.add(m.clip));
   (await fetchJson<{ clips?: string[] }>("output/index.json"))?.clips?.forEach((c) => names.add(c));
   return names.size ? [...names].sort() : ["melbourne"];
 }
@@ -97,8 +111,7 @@ export async function mediaIndexStamp(): Promise<string> {
   return JSON.stringify((await fetchMediaIndex())?.clips ?? []);
 }
 
-async function loadFiles(clip: string, manifestPath: string, source: "media" | "live"): Promise<ClipData | undefined> {
-  const raw = await fetchJson<RawManifest>(manifestPath);
+async function loadFiles(clip: string, raw: RawManifest | undefined, source: "media" | "live"): Promise<ClipData | undefined> {
   if (!raw?.regions?.length) return undefined;
   const n = normalize(raw);
   const api = await apiAvailable();
@@ -134,7 +147,10 @@ export async function loadClip(clip: string): Promise<ClipData> {
   }
 
   // clipurile publicate în repo (vin cu git pull), apoi randările locale din output/
-  const files = (await loadFiles(clip, `media/${clip}/manifest.json`, "media")) ?? (await loadFiles(clip, `output/${clip}.manifest.json`, "live"));
+  const published = (await fetchJson<RawManifest>(`media/${clip}/manifest.json`)) ?? catalog().find((m) => m.clip === clip);
+  const files =
+    (await loadFiles(clip, published, "media")) ??
+    (await loadFiles(clip, await fetchJson<RawManifest>(`output/${clip}.manifest.json`), "live"));
   if (files) return files;
 
   return {

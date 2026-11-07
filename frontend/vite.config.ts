@@ -8,12 +8,12 @@ import tailwindcss from "@tailwindcss/vite";
 // Rădăcina repo-ului: manifest.json folosește căi relative la ea (ex. "output/melbourne_ro.mp4").
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 // Folderele din repo pe care frontend-ul le citește direct, fără să copiem videoclipuri.
-// media/ e în public/ (deci intră și în build), dar îl servim tot de aici ca să meargă bucățile de 4 MB.
+// demo/media/: clipurile publicate pentru echipă (pipeline/publish_media.py); le servim tot de aici, în bucăți de 4 MB.
 const SERVED_DIRS: Record<string, string> = {
   output: "output",
   assets: "assets",
   data: "data",
-  media: "frontend/public/media",
+  media: "demo/media",
 };
 
 const CHUNK_BYTES = 4 * 1024 * 1024;
@@ -72,8 +72,47 @@ function serveRepoDirs(): Plugin {
 const BACKEND = process.env.BACKEND_URL ?? "http://localhost:8000";
 const proxy = { "/api": { target: BACKEND, changeOrigin: true } };
 
-export default defineConfig({
-  plugins: [react(), tailwindcss(), serveRepoDirs()],
-  server: { port: 5173, open: true, proxy },
-  preview: { proxy },
-});
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Pentru `npm run build:demo`: pune JS-ul și CSS-ul direct în index.html.
+ * O pagină deschisă de pe disc (file://) nu are voie să încarce module JS separate, dar le poate rula inline.
+ */
+function inlineIntoHtml(): Plugin {
+  return {
+    name: "inline-into-html",
+    apply: "build",
+    enforce: "post",
+    generateBundle(_, bundle) {
+      const html = Object.values(bundle).find((f) => f.type === "asset" && f.fileName.endsWith(".html"));
+      if (!html || html.type !== "asset") return;
+      let page = String(html.source);
+      for (const [name, file] of Object.entries(bundle)) {
+        if (file.type === "chunk") {
+          const code = file.code.replace(/<\/script/gi, "<\\/script");
+          page = page.replace(new RegExp(`<script[^>]*src="[^"]*${escapeRe(name)}"[^>]*></script>`), () => `<script type="module">${code}</script>`);
+          delete bundle[name];
+        } else if (name.endsWith(".css")) {
+          page = page.replace(new RegExp(`<link[^>]*href="[^"]*${escapeRe(name)}"[^>]*>`), () => `<style>${String(file.source)}</style>`);
+          delete bundle[name];
+        }
+      }
+      html.source = page;
+    },
+  };
+}
+
+export default defineConfig(({ mode }) =>
+  mode === "demo"
+    ? {
+        // demo/index.html: tot site-ul într-un fișier, lângă demo/media/ (care nu se șterge la build)
+        plugins: [react(), tailwindcss(), inlineIntoHtml()],
+        base: "./",
+        build: { outDir: "../demo", emptyOutDir: false, copyPublicDir: false, cssCodeSplit: false, modulePreload: false, assetsInlineLimit: 100_000_000 },
+      }
+    : {
+        plugins: [react(), tailwindcss(), serveRepoDirs()],
+        server: { port: 5173, open: true, proxy },
+        preview: { proxy },
+      },
+);

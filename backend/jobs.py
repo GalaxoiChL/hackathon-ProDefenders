@@ -220,7 +220,7 @@ class JobRunner:
             job.finished = time.time()
 
     def publish(self, job: Job) -> None:
-        """Copy the result to frontend/public/media/ (Git LFS) so the team gets it with git pull.
+        """Copy the result to demo/media/ (Git LFS) so the team gets it with git pull.
 
         Runs after the manifest is final (with `stats`); a failure is logged, the render still counts as done.
         """
@@ -231,7 +231,7 @@ class JobRunner:
                              text=True, encoding="utf-8", errors="replace")
         job.log.extend(line for line in (res.stdout + res.stderr).splitlines() if line.strip())
         if res.returncode != 0:
-            job.log.append(f"publish to frontend/public/media/ failed (exit {res.returncode})")
+            job.log.append(f"publish to demo/media/ failed (exit {res.returncode})")
 
     # ---------- manifest ----------
     def adopt_manifest(self, job: Job, summary: tuple[int, int] | None) -> str:

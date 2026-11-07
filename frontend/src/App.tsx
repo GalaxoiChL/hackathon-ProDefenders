@@ -67,8 +67,10 @@ function Footer({ tabCount }: { tabCount: number }) {
           {data?.source === "api"
             ? "Connected to the ProDefenders API"
             : data?.source === "media"
-              ? "Team videos from the repo (frontend/public/media)"
-              : data?.source === "live"
+              ? "Team videos from the repo (demo/media)"
+              : data?.source === "session"
+                ? "Your upload: it lives only in this tab"
+                : data?.source === "live"
               ? "Videos and data from output/ (API not running)"
               : "Sample data: no rendered clip found"}
         </span>

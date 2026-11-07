@@ -115,14 +115,14 @@ Toate coordonatele sunt în **pixeli din cadrul original**. Colțurile sunt mere
 ```bash
 python -m venv .venv          # sau: python -m uv venv .venv
 .venv/Scripts/pip install -r requirements.txt     # Windows; pe Mac/Linux: .venv/bin/pip
-python pipeline/make_test_ads.py                  # reclame placeholder, până există data/ads.json
+# reclamele reale nu sunt în git: descarcă fiecare `creative` din data/ads.json de la `creative_source`
 .venv/Scripts/python.exe pipeline/run.py assets/clips/melbourne.mp4 --max-frames 480
 ```
 
 `run.py` face tot lanțul: detectare AI (dacă nu există deja `output/<clip>.surfaces.json`), alegerea reclamei pe țară, adaptarea la formatul suprafeței, randarea tuturor țărilor + „AI view” + video comparativ, apoi scrie `output/<clip>.manifest.json`.
 
 Folosește automat ce produc celelalte task-uri, dacă există, altfel are fallback sigur:
-- `data/ads.json` (task 4); fără el: reclamele placeholder din `assets/ads/`
+- `data/ads.json` (task 4): **obligatoriu**, doar reclame reale; implicit se randează fiecare regiune care are o reclamă acolo
 - `output/<clip>.scene.json` (task 2) pentru alegerea AI și motiv; fără el: primul brand al regiunii
 - `assets/generated/<clip>/<regiune>.png` (task 2) pentru reclama adaptată de AI; fără el: `adapt_ad.py` încadrează reclama fără deformare
 
@@ -135,7 +135,6 @@ Clipul de test nu e în git (prea mare). Se descarcă de pe [Pexels](https://www
 | `pipeline/insert_ad.py` | motorul: urmărire (optical flow + omografie), pierdere și regăsire (SIFT), oameni în față (YOLO-seg), export pe țări + „AI view” |
 | `pipeline/detect_surfaces.py` | **AI:** găsește singur suprafețele publicitare (OWLv2 + SAM 2) și scrie `surfaces.json`; `insert_ad.py --corners` îl acceptă direct |
 | `pipeline/pick_corners.py` | marcare manuală a colțurilor (fallback dacă detectorul greșește) |
-| `pipeline/make_test_ads.py` | reclame placeholder RO/US/JP |
 | `pipeline/side_by_side.py` | video cu țările una lângă alta, sincronizate |
 | `pipeline/contact_sheet.py` | imagine cu cadre-cheie pentru verificare rapidă |
 

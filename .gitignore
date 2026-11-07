@@ -11,5 +11,8 @@ output/
 assets/clips/*.mp4
 assets/clips/*.mov
 
+# real brand ads: used only for the demo, not redistributed (re-download from creative_source in data/ads.json)
+data/creatives/
+
 # model weights downloaded at runtime
 *.pt

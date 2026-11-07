@@ -1,0 +1,24 @@
+[
+  {
+    "id": "ro-pizza-hut",
+    "region": "RO",
+    "brand": "Pizza Hut",
+    "category": "food",
+    "creative": "data/creatives/ro-pizza-hut.jpg",
+    "creative_source": "https://prod-phd-cms.s3.eu-west-1.amazonaws.com/files/bannercaseta-hp-1124x868_2.jpg",
+    "description": "Pizza Bar Nelimitat: combină câte felii vrei cu 29,90 lei, luni-vineri 12:00-15:00",
+    "fits": ["lunch", "day", "urban", "students", "groups"],
+    "avoid": ["violence", "accident", "sad"]
+  },
+  {
+    "id": "jp-mcdonalds",
+    "region": "JP",
+    "brand": "McDonald's",
+    "category": "food",
+    "creative": "data/creatives/jp-mcdonalds.jpg",
+    "creative_source": "https://www.mcdonalds.co.jp/media_library/39397/file.original.jpg",
+    "description": "マックフライポテト M/L ¥250 (McDonald's fries M/L for 250 yen, limited time)",
+    "fits": ["day", "evening", "urban", "snack"],
+    "avoid": ["violence", "accident", "sad"]
+  }
+]

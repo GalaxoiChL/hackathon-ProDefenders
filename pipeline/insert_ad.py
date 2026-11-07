@@ -5,7 +5,7 @@ then renders one output video per region, plus an optional "AI view" debug video
 
 Example:
     python pipeline/insert_ad.py assets/clips/street.mp4 --corners assets/clips/street.corners.json \
-        --ad ro=assets/ads/ro.png --ad us=assets/ads/us.png --ad jp=assets/ads/jp.png \
+        --ad ro=data/creatives/ro-pizza-hut.jpg --ad jp=data/creatives/jp-mcdonalds.jpg \
         --out output/street --track --occlude --debug
 """
 from __future__ import annotations
@@ -20,6 +20,18 @@ import numpy as np
 
 # COCO class ids that count as foreground occluders (things that pass in front of the billboard)
 OCCLUDER_CLASSES = {"person": 0, "bicycle": 1, "car": 2, "motorcycle": 3, "bus": 5, "truck": 7}
+
+
+def grow_quad(corners: np.ndarray, frac: float) -> np.ndarray:
+    """Push the quad outward from its center, so the new ad fully covers the old billboard's frame.
+
+    Detected corners tend to sit a few pixels inside the frame, which left a thin strip of the
+    original billboard visible along the edges.
+    """
+    if frac <= 0:
+        return corners
+    center = corners.mean(axis=0)
+    return (center + (corners - center) * (1.0 + frac)).astype(np.float32)
 
 
 def load_corners(path: Path, surface_id: str | None = None) -> np.ndarray:
@@ -298,6 +310,8 @@ def main() -> None:
     ap.add_argument("--corners", type=Path, required=True,
                     help="corners JSON (manual) or surfaces JSON from detect_surfaces.py, on the first frame")
     ap.add_argument("--surface", help="surface id to use from a surfaces JSON (default: most confident)")
+    ap.add_argument("--grow", type=float, default=0.02,
+                    help="enlarge the surface by this fraction so the old billboard's edges are covered")
     ap.add_argument("--ad", action="append", required=True, help="region=path/to/ad.png (repeatable)")
     ap.add_argument("--out", type=Path, required=True, help="output prefix, e.g. output/street -> output/street_ro.mp4")
     ap.add_argument("--track", action="store_true", help="track the billboard (moving camera)")
@@ -324,7 +338,7 @@ def main() -> None:
     w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    corners = load_corners(args.corners, args.surface)
+    corners = grow_quad(load_corners(args.corners, args.surface), args.grow)
     occ = Occluders(args.occluders.split(",")) if args.occlude else None
 
     args.out.parent.mkdir(parents=True, exist_ok=True)

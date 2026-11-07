@@ -23,13 +23,27 @@ def dominant_edge_color(img: np.ndarray) -> tuple[int, int, int]:
     return tuple(int(v) for v in np.median(edge, axis=0))
 
 
-def fit_to_aspect(img: np.ndarray, aspect: float, long_side: int = 1200) -> np.ndarray:
+def blurred_fill(img: np.ndarray, cw: int, ch: int) -> np.ndarray:
+    """The ad itself, scaled to cover the canvas, heavily blurred and darkened: a background that
+    matches the ad's colors (the usual 'blur fill' when a creative doesn't match a format)."""
+    h, w = img.shape[:2]
+    s = max(cw / w, ch / h)
+    big = cv2.resize(img, (max(cw, round(w * s)), max(ch, round(h * s))), interpolation=cv2.INTER_AREA)
+    y, x = (big.shape[0] - ch) // 2, (big.shape[1] - cw) // 2
+    bg = cv2.GaussianBlur(big[y:y + ch, x:x + cw], (0, 0), max(cw, ch) / 25)
+    return cv2.convertScaleAbs(bg, alpha=0.7, beta=0)
+
+
+def fit_to_aspect(img: np.ndarray, aspect: float, long_side: int = 1200, fill: str = "blur") -> np.ndarray:
     """Return a canvas with width/height == aspect, the ad centered inside it, undistorted."""
     if aspect >= 1:
         cw, ch = long_side, max(1, round(long_side / aspect))
     else:
         cw, ch = max(1, round(long_side * aspect)), long_side
-    canvas = np.full((ch, cw, 3), dominant_edge_color(img), np.uint8)
+    if fill == "blur":
+        canvas = blurred_fill(img, cw, ch)
+    else:
+        canvas = np.full((ch, cw, 3), dominant_edge_color(img), np.uint8)
     h, w = img.shape[:2]
     s = min(cw / w, ch / h)
     nw, nh = max(1, round(w * s)), max(1, round(h * s))

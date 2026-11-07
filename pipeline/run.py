@@ -60,7 +60,7 @@ def choose_ad(region: str, ads: list[dict] | None, scene: dict | None) -> tuple[
     for ad in ads or []:
         if ad.get("region") == region:
             return ad, "implicit: primul brand pentru regiune din data/ads.json (analiza AI a scenei lipsește)"
-    return None, "placeholder: nu există reclame pentru regiune în data/ads.json"
+    return None, "nu există reclame pentru regiune în data/ads.json"
 
 
 def creative_for(region: str, ad: dict | None, clip: str, aspect: float, work: Path) -> Path:
@@ -68,13 +68,11 @@ def creative_for(region: str, ad: dict | None, clip: str, aspect: float, work: P
     generated = ROOT / "assets" / "generated" / clip / f"{region.lower()}.png"
     if generated.exists():  # task 2 produced an AI-adapted creative
         return generated
-    if ad and ad.get("creative") and (ROOT / ad["creative"]).exists():
-        src = ROOT / ad["creative"]
-    else:  # no data yet: built-in placeholders
-        name = f"{region.lower()}_portrait.png" if aspect < 1 else f"{region.lower()}.png"
-        src = ROOT / "assets" / "ads" / name
-        if not src.exists():
-            raise SystemExit(f"no creative for {region}: add it to data/ads.json or run make_test_ads.py")
+    if not ad or not ad.get("creative"):
+        raise SystemExit(f"no real ad for {region} in data/ads.json")
+    src = ROOT / ad["creative"]
+    if not src.exists():
+        raise SystemExit(f"missing {ad['creative']} for {region}: download it from {ad.get('creative_source', '?')}")
     img = cv2.imread(str(src), cv2.IMREAD_COLOR)
     if img is None:
         raise SystemExit(f"cannot read creative {src}")
@@ -86,7 +84,7 @@ def creative_for(region: str, ad: dict | None, clip: str, aspect: float, work: P
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("video", type=Path)
-    ap.add_argument("--regions", nargs="+", default=["RO", "US", "JP"])
+    ap.add_argument("--regions", nargs="+", help="default: every region that has an ad in data/ads.json")
     ap.add_argument("--surface", help="surface id to use (default: most confident)")
     ap.add_argument("--redetect", action="store_true", help="run detection even if surfaces.json exists")
     ap.add_argument("--max-frames", type=int, default=0)
@@ -97,7 +95,11 @@ def main() -> None:
     clip = video.stem
     out_dir = ROOT / "output"
     out_dir.mkdir(exist_ok=True)
-    regions = [r.upper() for r in args.regions]
+    ads = load_json(ROOT / "data" / "ads.json")
+    if not ads:
+        raise SystemExit("data/ads.json is missing or empty: add real ads (see CLAUDE.md)")
+    regions = [r.upper() for r in args.regions] if args.regions \
+        else list(dict.fromkeys(a["region"] for a in ads))
 
     # 1. AI: where can ads go?
     surfaces_path = out_dir / f"{clip}.surfaces.json"
@@ -113,7 +115,6 @@ def main() -> None:
     print(f"surface {surface['id']}: {surface['type']}, aspect {surface['aspect']}, confidence {surface['confidence']}")
 
     # 2. which ad per region (task 2 AI choice if present) and its creative at the surface format
-    ads = load_json(ROOT / "data" / "ads.json")
     scene = load_json(out_dir / f"{clip}.scene.json")
     work = out_dir / f"{clip}_creatives"
     work.mkdir(exist_ok=True)
@@ -121,7 +122,7 @@ def main() -> None:
     for region in regions:
         ad, reason = choose_ad(region, ads, scene)
         picks[region] = (ad, reason, creative_for(region, ad, clip, surface["aspect"], work))
-        print(f"  {region}: {(ad or {}).get('brand', 'placeholder')}  ({reason})")
+        print(f"  {region}: {(ad or {}).get('brand')}  ({reason})")
 
     # 3. render every region in one pass + the "AI view"
     cmd = [PY, "pipeline/insert_ad.py", video, "--corners", surfaces_path, "--surface", surface["id"],

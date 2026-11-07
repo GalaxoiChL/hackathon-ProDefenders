@@ -1,0 +1,19 @@
+[
+  { "id": "b01", "slot_id": "melbourne-s1-ro", "brand_id": "ro-pizza-bunicii", "amount_eur": 2900, "placed_at": "2026-11-07T09:12:00Z" },
+  { "id": "b02", "slot_id": "melbourne-s1-ro", "brand_id": "ro-cafeneaua-colt", "amount_eur": 2700, "placed_at": "2026-11-07T09:20:00Z" },
+  { "id": "b03", "slot_id": "melbourne-s1-ro", "brand_id": "ro-tech-planet", "amount_eur": 3400, "placed_at": "2026-11-07T09:31:00Z" },
+  { "id": "b04", "slot_id": "melbourne-s1-us", "brand_id": "us-burger-bros", "amount_eur": 92000, "placed_at": "2026-11-07T08:55:00Z" },
+  { "id": "b05", "slot_id": "melbourne-s1-us", "brand_id": "us-cold-brew-co", "amount_eur": 86000, "placed_at": "2026-11-07T09:05:00Z" },
+  { "id": "b06", "slot_id": "melbourne-s1-jp", "brand_id": "jp-sakura-ramen", "amount_eur": 17500, "placed_at": "2026-11-07T09:40:00Z" },
+  { "id": "b07", "slot_id": "melbourne-s1-jp", "brand_id": "jp-matcha-go", "amount_eur": 15000, "placed_at": "2026-11-07T09:44:00Z" },
+
+  { "id": "b08", "slot_id": "harbour-s1-ro", "brand_id": "ro-cafeneaua-colt", "amount_eur": 2100, "placed_at": "2026-11-05T14:02:00Z" },
+  { "id": "b09", "slot_id": "harbour-s1-ro", "brand_id": "ro-pizza-bunicii", "amount_eur": 1950, "placed_at": "2026-11-05T14:30:00Z" },
+  { "id": "b10", "slot_id": "harbour-s1-ro", "brand_id": "ro-tech-planet", "amount_eur": 2500, "placed_at": "2026-11-05T15:10:00Z" },
+  { "id": "b11", "slot_id": "harbour-s1-us", "brand_id": "us-cold-brew-co", "amount_eur": 61000, "placed_at": "2026-11-05T13:00:00Z" },
+  { "id": "b12", "slot_id": "harbour-s1-us", "brand_id": "us-burger-bros", "amount_eur": 58500, "placed_at": "2026-11-05T13:45:00Z" },
+  { "id": "b13", "slot_id": "metro-s2-us", "brand_id": "us-burger-bros", "amount_eur": 64000, "placed_at": "2026-11-04T10:20:00Z" },
+  { "id": "b14", "slot_id": "metro-s2-us", "brand_id": "us-cold-brew-co", "amount_eur": 55000, "placed_at": "2026-11-04T10:50:00Z" },
+  { "id": "b15", "slot_id": "metro-s2-jp", "brand_id": "jp-matcha-go", "amount_eur": 12500, "placed_at": "2026-11-04T11:15:00Z" },
+  { "id": "b16", "slot_id": "metro-s2-jp", "brand_id": "jp-sakura-ramen", "amount_eur": 11800, "placed_at": "2026-11-04T11:40:00Z" }
+]

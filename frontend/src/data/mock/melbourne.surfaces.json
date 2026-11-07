@@ -1,0 +1,13 @@
+{
+  "clip": "melbourne",
+  "surfaces": [
+    {
+      "id": "s1",
+      "type": "billboard",
+      "frame": 0,
+      "corners": [[1071, 356], [1221, 369], [1223, 565], [1071, 559]],
+      "aspect": 0.77,
+      "confidence": 0.91
+    }
+  ]
+}

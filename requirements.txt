@@ -4,6 +4,3 @@ ultralytics
 imageio-ffmpeg
 pillow
 transformers
-fastapi
-uvicorn
-python-multipart

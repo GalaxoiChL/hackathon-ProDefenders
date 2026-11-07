@@ -1,0 +1,121 @@
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useApp } from "./state";
+import { loadMarket, type MarketData } from "./data/loadMarket";
+import { ineligibility, runAuction, type AuctionResult } from "./data/auction";
+import type { Ad, Bid, Slot } from "./data/types";
+import mockAds from "./data/mock/ads.json";
+
+/** Cât de des reîncărcăm ofertele din backend (vin prin linkurile din emailuri). */
+const API_REFRESH_MS = 15_000;
+
+interface MarketState {
+  slots: Slot[];
+  bids: Bid[];
+  brands: Ad[];
+  source: MarketData["source"] | null;
+  /** moneda spațiilor (toate au aceeași în aceeași sursă) */
+  currency: Slot["currency"];
+  /** Momentul (ms) la care se închide fiecare licitație deschisă. */
+  deadlines: Record<string, number>;
+  isClosed: (slotId: string) => boolean;
+  results: Record<string, AuctionResult>;
+  /** Întoarce motivul refuzului, sau null dacă oferta a fost acceptată. */
+  placeBid: (slotId: string, brandId: string, amount: number) => string | null;
+  closeAuction: (slotId: string) => void;
+}
+
+const MarketContext = createContext<MarketState | null>(null);
+
+export function MarketProvider({ children }: { children: ReactNode }) {
+  const loaded = useApp().data?.ads;
+  const [market, setMarket] = useState<MarketData | null>(null);
+  const [bids, setBids] = useState<Bid[]>([]);
+  const [deadlines, setDeadlines] = useState<Record<string, number>>({});
+  const [closed, setClosed] = useState<Set<string>>(new Set());
+  const slots = useMemo(() => market?.slots ?? [], [market]);
+
+  // Companiile: reclamele încărcate, cele care au licitat prin backend și, pentru datele de test, brandurile de test.
+  const brands = useMemo(() => {
+    const byId = new Map<string, Ad>();
+    const extra = market?.source === "api" ? market.companies : (mockAds as Ad[]);
+    for (const a of [...(loaded ?? []), ...extra]) if (!byId.has(a.id)) byId.set(a.id, a);
+    return [...byId.values()];
+  }, [loaded, market]);
+
+  useEffect(() => {
+    loadMarket().then((m) => {
+      const now = Date.now();
+      setMarket(m);
+      setBids(m.bids);
+      setDeadlines(Object.fromEntries(m.slots.filter((s) => s.closes_in_sec).map((s) => [s.id, now + s.closes_in_sec! * 1000])));
+      setClosed(new Set(m.slots.filter((s) => s.status === "closed" || (!s.status && !s.closes_in_sec)).map((s) => s.id)));
+    });
+  }, []);
+
+  // ofertele din backend sosesc oricând (pagina /bid/<token> din email), așa că le reîncărcăm periodic
+  useEffect(() => {
+    if (market?.source !== "api") return;
+    const t = window.setInterval(() => {
+      loadMarket().then((m) => {
+        if (m.source !== "api") return;
+        setMarket(m);
+        setBids(m.bids);
+      });
+    }, API_REFRESH_MS);
+    return () => clearInterval(t);
+  }, [market?.source]);
+
+  const closeAuction = useCallback((slotId: string) => setClosed((c) => new Set(c).add(slotId)), []);
+
+  // închide automat licitațiile când expiră timpul
+  useEffect(() => {
+    const timers = Object.entries(deadlines)
+      .filter(([id]) => !closed.has(id))
+      .map(([id, at]) => window.setTimeout(() => closeAuction(id), Math.max(0, at - Date.now())));
+    return () => timers.forEach(clearTimeout);
+  }, [deadlines, closed, closeAuction]);
+
+  const results = useMemo(() => {
+    const out: Record<string, AuctionResult> = {};
+    for (const s of slots) {
+      if (closed.has(s.id)) out[s.id] = runAuction(s, bids.filter((b) => b.slot_id === s.id), brands);
+    }
+    return out;
+  }, [slots, bids, brands, closed]);
+
+  const placeBid = useCallback(
+    (slotId: string, brandId: string, amount: number) => {
+      const slot = slots.find((s) => s.id === slotId);
+      if (!slot || closed.has(slotId)) return "This auction is closed";
+      if (!Number.isFinite(amount) || amount <= 0) return "Enter an amount";
+      const reason = ineligibility(slot, brands.find((b) => b.id === brandId), amount);
+      if (reason) return reason;
+      setBids((list) => [
+        ...list.filter((b) => !(b.slot_id === slotId && b.brand_id === brandId)), // o ofertă nouă o înlocuiește pe cea veche
+        { id: `u${Date.now()}`, slot_id: slotId, brand_id: brandId, amount, placed_at: new Date().toISOString() },
+      ]);
+      return null;
+    },
+    [slots, brands, closed],
+  );
+
+  const value: MarketState = {
+    slots,
+    bids,
+    brands,
+    source: market?.source ?? null,
+    currency: slots[0]?.currency ?? "EUR",
+    deadlines,
+    isClosed: (id) => closed.has(id),
+    results,
+    placeBid,
+    closeAuction,
+  };
+  return <MarketContext.Provider value={value}>{children}</MarketContext.Provider>;
+}
+
+export function useMarket(): MarketState {
+  const ctx = useContext(MarketContext);
+  if (!ctx) throw new Error("useMarket must be used inside <MarketProvider>");
+  return ctx;
+}

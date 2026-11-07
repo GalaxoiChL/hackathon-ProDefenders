@@ -1,0 +1,50 @@
+{
+  "clip": "melbourne",
+  "original": "assets/clips/melbourne.mp4",
+  "duration_sec": 16,
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "ai_view": "output/melbourne_ai_view.mp4",
+  "stats": { "frames": 480, "lost_frames": 12, "sec_per_frame": 0.7, "occluded_frames": 140 },
+  "timeline": [
+    { "frame": 0, "state": "visible" },
+    { "frame": 150, "state": "occluded" },
+    { "frame": 230, "state": "visible" },
+    { "frame": 330, "state": "lost" },
+    { "frame": 342, "state": "visible" }
+  ],
+  "pipeline": [
+    { "step": "detect_surfaces", "status": "done", "sec": 3.2 },
+    { "step": "analyze_scene", "status": "done", "sec": 5.8 },
+    { "step": "choose_ads", "status": "done", "sec": 1.1 },
+    { "step": "generate_ad", "status": "done", "sec": 12.4 },
+    { "step": "insert_ad", "status": "done", "sec": 336.0 }
+  ],
+  "regions": [
+    {
+      "code": "RO",
+      "label": "România",
+      "video": "output/melbourne_ro.mp4",
+      "ad_id": "ro-pizza-bunicii",
+      "reason": "Stradă aglomerată la prânz: o felie de pizza rapidă și ieftină se potrivește trecătorilor grăbiți.",
+      "metrics": { "screen_time_sec": 14.2, "visibility": 7.5, "est_impressions": 300000, "est_revenue_eur": 1750 }
+    },
+    {
+      "code": "US",
+      "label": "SUA",
+      "video": "output/melbourne_us.mp4",
+      "ad_id": "us-burger-bros",
+      "reason": "Mediu urban, ritm alert: un burger la preț mic e alegerea clasică pentru publicul american.",
+      "metrics": { "screen_time_sec": 14.2, "visibility": 7.5, "est_impressions": 5000000, "est_revenue_eur": 81000 }
+    },
+    {
+      "code": "JP",
+      "label": "Japonia",
+      "video": "output/melbourne_jp.mp4",
+      "ad_id": "jp-sakura-ramen",
+      "reason": "Cer înnorat, stradă de oraș: un bol de ramen cald, servit rapid, în stil Tokyo.",
+      "metrics": { "screen_time_sec": 14.2, "visibility": 7.5, "est_impressions": 1200000, "est_revenue_eur": 21000 }
+    }
+  ]
+}

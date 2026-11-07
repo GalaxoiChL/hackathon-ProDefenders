@@ -1,0 +1,15 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# secrets (API keys)
+.env
+
+# rendered results and large media (regenerate with the pipeline)
+output/
+assets/clips/*.mp4
+assets/clips/*.mov
+
+# model weights downloaded at runtime
+*.pt

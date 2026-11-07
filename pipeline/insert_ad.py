@@ -18,6 +18,9 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+FADE_OUT = 0.25  # ad fades out over 4 frames (~0.13 s at 30 fps)
+FADE_IN = 0.5    # and back in over 2 frames: the old ad must not show through for long
+
 # COCO class ids that count as foreground occluders (things that pass in front of the billboard)
 OCCLUDER_CLASSES = {"person": 0, "bicycle": 1, "car": 2, "motorcycle": 3, "bus": 5, "truck": 7}
 
@@ -387,7 +390,39 @@ def harmonize(ad: np.ndarray, frame: np.ndarray, mask: np.ndarray, strength: flo
     return cv2.cvtColor(np.clip(out, 0, 255).astype(np.uint8), cv2.COLOR_LAB2BGR)
 
 
-def composite(frame, ad_img, corners, occ_mask, harmonize_strength, blur_sigma):
+def scene_look(frame: np.ndarray, corners: np.ndarray) -> tuple[np.ndarray, float, float]:
+    """Measure the scene around the billboard: air/haze color, saturation level, sensor grain."""
+    h, w = frame.shape[:2]
+    x0, y0, x1, y1 = roi_box(corners, w, h, pad=0.5)
+    ring = frame[y0:y1, x0:x1]
+    if ring.size == 0:
+        return np.array([128, 128, 128], np.float32), 0.3, 1.5
+    air = np.median(ring.reshape(-1, 3), axis=0).astype(np.float32)
+    sat = float(np.median(cv2.cvtColor(ring, cv2.COLOR_BGR2HSV)[..., 1])) / 255.0
+    gray = cv2.cvtColor(ring, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    hp = gray - cv2.GaussianBlur(gray, (0, 0), 1.5)
+    grain = float(np.median(np.abs(hp)) * 1.4826)  # robust std of the fine noise
+    return air, sat, min(grain, 6.0)
+
+
+def realism(ad: np.ndarray, air: np.ndarray, scene_sat: float, grain: float, haze: float, rng) -> np.ndarray:
+    """Make a clean digital ad look filmed: atmospheric haze, scene-level saturation, sensor grain."""
+    out = ad.astype(np.float32)
+    # 1. desaturate toward the scene: a saturated print seen through the air looks muted on camera
+    hsv = cv2.cvtColor(np.clip(out, 0, 255).astype(np.uint8), cv2.COLOR_BGR2HSV).astype(np.float32)
+    ad_sat = max(float(np.median(hsv[..., 1])) / 255.0, 1e-3)
+    factor = float(np.clip(0.55 + 0.45 * scene_sat / ad_sat, 0.55, 1.0))
+    hsv[..., 1] *= factor
+    out = cv2.cvtColor(np.clip(hsv, 0, 255).astype(np.uint8), cv2.COLOR_HSV2BGR).astype(np.float32)
+    # 2. atmospheric haze: blend a little toward the surrounding air color
+    out = out * (1 - haze) + air * haze
+    # 3. sensor grain like the rest of the footage
+    if grain > 0.2:
+        out += rng.normal(0, grain, out.shape[:2])[..., None]
+    return np.clip(out, 0, 255).astype(np.uint8)
+
+
+def composite(frame, ad_img, corners, occ_mask, harmonize_strength, blur_sigma, haze=0.12, rng=None, opacity=1.0):
     """Paste the ad onto the billboard. All the work happens in a small box around the billboard."""
     h, w = frame.shape[:2]
     out = frame.copy()
@@ -396,6 +431,12 @@ def composite(frame, ad_img, corners, occ_mask, harmonize_strength, blur_sigma):
         return out  # billboard fully off-screen
     rw, rh = x1 - x0, y1 - y0
     roi = frame[y0:y1, x0:x1]
+    # shrink the ad to about its on-screen size first (area averaging), like a camera would see it;
+    # warping a 1200px image straight down to ~150px aliases and looks unnaturally crisp
+    side = float(max(np.linalg.norm(corners[1] - corners[0]), np.linalg.norm(corners[2] - corners[1])))
+    scale = min(1.0, 1.5 * side / max(ad_img.shape[:2]))
+    if scale < 1.0:
+        ad_img = cv2.resize(ad_img, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
     ah, aw = ad_img.shape[:2]
     src = np.float32([[0, 0], [aw, 0], [aw, ah], [0, ah]])
     M = cv2.getPerspectiveTransform(src, (corners - [x0, y0]).astype(np.float32))
@@ -404,7 +445,10 @@ def composite(frame, ad_img, corners, occ_mask, harmonize_strength, blur_sigma):
     warped = harmonize(warped, roi, mask, harmonize_strength)
     if blur_sigma > 0:
         warped = cv2.GaussianBlur(warped, (0, 0), blur_sigma)
-    alpha = cv2.GaussianBlur(mask, (3, 3), 0).astype(np.float32) / 255.0  # anti-aliased edges
+    if haze > 0:
+        air, scene_sat, grain = scene_look(frame, corners)
+        warped = realism(warped, air, scene_sat, grain, haze, rng or np.random.default_rng())
+    alpha = cv2.GaussianBlur(mask, (3, 3), 0).astype(np.float32) / 255.0 * opacity  # anti-aliased edges, fade
     if occ_mask is not None:
         occ = cv2.GaussianBlur(occ_mask[y0:y1, x0:x1], (5, 5), 0).astype(np.float32) / 255.0
         alpha *= 1.0 - occ
@@ -460,6 +504,8 @@ def main() -> None:
     ap.add_argument("--occluders", default="person", help="comma list: " + ",".join(OCCLUDER_CLASSES))
     ap.add_argument("--harmonize", type=float, default=0.5, help="0..1 color/brightness match to the scene")
     ap.add_argument("--blur", type=float, default=0.6, help="gaussian sigma applied to the ad (camera softness)")
+    ap.add_argument("--haze", type=float, default=0.12,
+                    help="0..1 atmospheric haze/desaturation/grain so the ad looks filmed (0 = off)")
     ap.add_argument("--debug", action="store_true", help="also render the 'AI view' video")
     ap.add_argument("--max-frames", type=int, default=0)
     args = ap.parse_args()
@@ -480,7 +526,15 @@ def main() -> None:
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
     corners = grow_quad(load_corners(args.corners, args.surface), args.grow)
-    occ = Occluders(args.occluders.split(",")) if args.occlude else None
+    occ = None
+    if args.occlude:
+        try:
+            occ = Occluders(args.occluders.split(","))
+        except (OSError, ImportError) as e:
+            # e.g. Windows Application Control blocking torch DLLs: keep going, the reference keyer
+            # still finds whatever is in front of the billboard (bus, people) without torch
+            print(f"WARNING: YOLO occluders unavailable ({type(e).__name__}: {str(e)[:120]}); "
+                  "using reference keying only")
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -492,6 +546,9 @@ def main() -> None:
 
     tracker = None
     keyer = None
+    rng = np.random.default_rng(0)  # fixed seed: identical grain across reruns
+    visible, opacity = True, 1.0
+    hidden_streak = clear_streak = 0
     idx = lost_frames = coast_count = 0
     limit = min(total, args.max_frames) if args.max_frames and total else (args.max_frames or total)
     while True:
@@ -517,13 +574,26 @@ def main() -> None:
             # what is in front of the billboard: YOLO (people, vehicles) OR "doesn't look like the old ad"
             key_mask, covered = keyer.mask(frame, corners)
             occ_mask = key_mask if occ_mask is None else np.maximum(occ_mask, key_mask)
-        hide = corners is None or covered > 0.6  # billboard mostly hidden: show no fragments of the ad
+        # Visibility with hysteresis + fade: deciding per frame made the ad blink on and off when the
+        # covered fraction hovered around the threshold. Now it hides only after several covered frames,
+        # comes back only after several clear frames, and always fades over a few frames.
+        if corners is None or covered > 0.6:
+            hidden_streak, clear_streak = hidden_streak + 1, 0
+        elif covered < 0.4:
+            hidden_streak, clear_streak = 0, clear_streak + 1
+        if visible and (corners is None or hidden_streak >= 2):
+            visible = False
+        elif not visible and corners is not None and clear_streak >= 1:
+            visible = True  # come back at once: every extra frame would show the OLD ad (a visible switch)
+        opacity = float(np.clip(opacity + (FADE_IN if visible else -FADE_OUT), 0.0, 1.0))
         if corners is None:
             lost_frames += 1
         elif tracker is not None and tracker.mode == "coast":
             coast_count += 1
         for region, ad_img in ads.items():
-            out = frame if hide else composite(frame, ad_img, corners, occ_mask, args.harmonize, args.blur)
+            draw = corners is not None and opacity > 0
+            out = composite(frame, ad_img, corners, occ_mask, args.harmonize, args.blur,
+                            haze=args.haze, rng=rng, opacity=opacity) if draw else frame
             writers[region].write(out)
         if args.debug:
             if corners is None:

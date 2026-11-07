@@ -53,7 +53,7 @@ Scrie-ți numele în coloana **Owner**, lucrează pe branch-ul indicat și desch
 |---|---|---|---|---|---|
 | **1** | **Pipeline video AI** | motorul de inserare (✅ v1 gata), detectarea automată a panourilor cu AI, scriptul care leagă toți pașii și scrie `manifest.json` | dai un clip și primești automat videoclipurile pe țări + „AI view” + `manifest.json`, fără click manual | `video-pipeline` | Alex + Claude |
 | **2** | **AI de scenă și adaptarea reclamelor** | ✅ analiza scenei, brand safety și alegerea reclamei cu motiv (`analyze_scene.py`, gata). **Rămâne:** adaptarea reclamei la formatul suprafeței cu AI (recompunerea fundalului prin API de imagini), în locul decupării din `adapt_ad.py` | câte un PNG per țară în `assets/generated/<clip>/<regiune>.png`, exact la formatul (`aspect`) suprafeței, fără text tăiat | `ai-ads` | analiză: Alex + Claude; adaptare: _liber_ |
-| **3** | **Frontend demo** | player web cu țările sincronizate, selector de țară sau geolocație IP, buton „Arată ce vede AI-ul”, dashboard pentru advertiser (spații, vizibilitate, venit estimat) | demo-ul complet rulează în browser, citind `manifest.json` | `frontend` | _liber_ |
+| **3** | **Frontend demo** | player web cu țările sincronizate, selector de țară sau geolocație IP, buton „Arată ce vede AI-ul”, dashboard pentru advertiser (spații, vizibilitate, venit estimat). **Backend-ul API e gata** (vezi „Backend API”): pui fișierele în `web/` și le servește tot el | demo-ul complet rulează în browser, pe `http://localhost:8000` | `frontend` | _liber_ |
 | **4** | **Date, conținut și pitch** | `data/ads.json` cu 2–3 branduri reale per țară (RO, US, JP) și reclamele lor reale (imagini salvate în `data/creatives/`), 2–3 clipuri demo (cameră fixă, oameni prin fața panoului), cifre cost/valoare, prezentarea de 3 minute | baza de date completă, clipurile alese, slide-urile și pitch-ul repetat | `content` | _liber_ |
 
 Dependențe: **3** poate începe imediat cu videoclipurile existente din `output/`. **2** are nevoie de formatul `ads.json` (de mai jos) pentru textul reclamelor; până e gata baza de date, folosește exemplul din contract. **1** leagă totul la final; până atunci fiecare task rulează singur, pe fișiere.
@@ -109,6 +109,23 @@ Toate coordonatele sunt în **pixeli din cadrul original**. Colțurile sunt mere
   "regions": [ { "code": "RO", "label": "România", "video": "output/melbourne_ro.mp4",
                  "ad_id": "ro-pizza-hut", "reason": "..." } ] }
 ```
+
+## Backend API (pentru frontend, task 3)
+
+```bash
+.venv/Scripts/python.exe backend/server.py        # http://localhost:8000, documentație interactivă: /docs
+```
+
+| Endpoint | Ce întoarce |
+|---|---|
+| `GET /api/clips` | clipurile procesate (din `output/*.manifest.json`) |
+| `GET /api/clips/{clip}` | manifestul complet + `video_url` / `creative_url` gata de pus în `<video>` / `<img>` |
+| `GET /api/geo` | țara privitorului după IP (ip-api.com); `?country=JP` forțează o țară pentru demo; offline → `RO` |
+| `GET /api/ads` | catalogul de reclame reale (`data/ads.json`) |
+| `POST /api/process` | upload clip (multipart `file`, opțional `max_frames`) → rulează `run.py` în fundal, întoarce `id` |
+| `GET /api/jobs/{id}` | `status`, `stage` (detect / scene / render / compare), `percent`, ultimele linii de log |
+| `/output/...`, `/clips/...` | videoclipurile (cu suport de derulare / range requests) |
+| `/` | frontend-ul, dacă există folderul `web/` (pune acolo `index.html`) |
 
 ## Cum rulezi (o singură comandă)
 

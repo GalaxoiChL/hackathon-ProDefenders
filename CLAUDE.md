@@ -110,23 +110,28 @@ Toate coordonatele sunt în **pixeli din cadrul original**. Colțurile sunt mere
                  "ad_id": "ro-pizza-hut", "reason": "..." } ] }
 ```
 
-## Cum rulezi motorul (merge deja)
+## Cum rulezi (o singură comandă)
 
 ```bash
 python -m venv .venv          # sau: python -m uv venv .venv
 .venv/Scripts/pip install -r requirements.txt     # Windows; pe Mac/Linux: .venv/bin/pip
-python pipeline/make_test_ads.py
-python pipeline/insert_ad.py assets/clips/melbourne.mp4 \
-  --corners assets/clips/melbourne.corners.json \
-  --ad ro=assets/ads/ro_portrait.png --ad us=assets/ads/us_portrait.png --ad jp=assets/ads/jp_portrait.png \
-  --out output/melbourne --track --occlude --debug --max-frames 480
-python pipeline/side_by_side.py output/melbourne --versions ro us jp --out output/compare.mp4
+python pipeline/make_test_ads.py                  # reclame placeholder, până există data/ads.json
+.venv/Scripts/python.exe pipeline/run.py assets/clips/melbourne.mp4 --max-frames 480
 ```
+
+`run.py` face tot lanțul: detectare AI (dacă nu există deja `output/<clip>.surfaces.json`), alegerea reclamei pe țară, adaptarea la formatul suprafeței, randarea tuturor țărilor + „AI view” + video comparativ, apoi scrie `output/<clip>.manifest.json`.
+
+Folosește automat ce produc celelalte task-uri, dacă există, altfel are fallback sigur:
+- `data/ads.json` (task 4); fără el: reclamele placeholder din `assets/ads/`
+- `output/<clip>.scene.json` (task 2) pentru alegerea AI și motiv; fără el: primul brand al regiunii
+- `assets/generated/<clip>/<regiune>.png` (task 2) pentru reclama adaptată de AI; fără el: `adapt_ad.py` încadrează reclama fără deformare
 
 Clipul de test nu e în git (prea mare). Se descarcă de pe [Pexels](https://www.pexels.com/video/people-walking-down-a-city-street-with-a-red-jacket-27817664/) și se salvează ca `assets/clips/melbourne.mp4`.
 
 | Script | Rol |
 |---|---|
+| `pipeline/run.py` | **comanda principală:** tot lanțul, de la clip la `manifest.json` |
+| `pipeline/adapt_ad.py` | încadrează o reclamă la formatul suprafeței fără deformare (fallback pentru AI-ul din task 2) |
 | `pipeline/insert_ad.py` | motorul: urmărire (optical flow + omografie), pierdere și regăsire (SIFT), oameni în față (YOLO-seg), export pe țări + „AI view” |
 | `pipeline/detect_surfaces.py` | **AI:** găsește singur suprafețele publicitare (OWLv2 + SAM 2) și scrie `surfaces.json`; `insert_ad.py --corners` îl acceptă direct |
 | `pipeline/pick_corners.py` | marcare manuală a colțurilor (fallback dacă detectorul greșește) |

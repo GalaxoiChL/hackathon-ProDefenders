@@ -60,6 +60,12 @@ def load_corners(path: Path, surface_id: str | None = None) -> np.ndarray:
     return pts
 
 
+def quad_aspect(q: np.ndarray) -> float:
+    w = (np.linalg.norm(q[1] - q[0]) + np.linalg.norm(q[2] - q[3])) / 2
+    h = (np.linalg.norm(q[3] - q[0]) + np.linalg.norm(q[2] - q[1])) / 2
+    return float(w / max(h, 1e-6))
+
+
 def plausible(prev: np.ndarray, new: np.ndarray, shape: tuple[int, int]) -> bool:
     """Reject homographies that blow the billboard up, flip it, or fling it far off-screen."""
     if not cv2.isContourConvex(new.reshape(-1, 1, 2).astype(np.float32)):
@@ -84,7 +90,10 @@ class PlaneTracker:
     """
 
     MIN_INLIERS = 12
-    MIN_REACQUIRE_INLIERS = 15
+    # measured on the Melbourne clip: when the billboard comes back it matches with 8-14 inliers
+    # (motion blur, partly cut by the frame edge); the shape checks in _reacquire guard false hits
+    MIN_REACQUIRE_INLIERS = 8
+    MAX_BLIND_FRAMES = 45  # bus fills the whole frame: hold the last position up to ~1.5 s
 
     def __init__(self, first_gray: np.ndarray, corners: np.ndarray, pad: float = 0.35):
         self.prev = first_gray
@@ -92,6 +101,10 @@ class PlaneTracker:
         self.pad = pad
         self.pts = self._features(first_gray, None)
         self.last_inliers = 0
+        self.mode = "local"
+        self.coast_frames = 0
+        self.blind_frames = 0
+        self.prev_exclude: np.ndarray | None = None
         # reference "fingerprint" of the billboard for re-acquisition
         # no feature cap: with a cap the strongest features land elsewhere in the frame and a
         # small billboard ends up with ~5 reference points (re-acquire then never succeeds)
@@ -100,9 +113,45 @@ class PlaneTracker:
         self.ref_kp, self.ref_des = self.sift.detectAndCompute(first_gray, self._region_mask(first_gray.shape))
         self.matcher = cv2.BFMatcher(cv2.NORM_L2)
 
+    MIN_GLOBAL_INLIERS = 30
+    MAX_COAST_FRAMES = 600  # give up dead-reckoning after ~20 s without seeing the billboard
+
     @property
     def lost(self) -> bool:
         return self.corners is None
+
+    def _global_motion(self, gray: np.ndarray, exclude: np.ndarray | None) -> np.ndarray | None:
+        """Camera motion between the previous and current frame, estimated on the whole scene.
+
+        Moving objects (people, buses) are masked out, so a bus driving past does not drag the
+        billboard along with it. Distant buildings move almost as one plane, which is good enough
+        to carry the billboard's position while it is hidden or off-screen.
+        """
+        mask = None
+        if self.prev_exclude is not None:
+            mask = np.where(self.prev_exclude > 0, 0, 255).astype(np.uint8)
+        pts = cv2.goodFeaturesToTrack(self.prev, maxCorners=800, qualityLevel=0.01, minDistance=12, mask=mask)
+        if pts is None or len(pts) < self.MIN_GLOBAL_INLIERS:
+            return None
+        nxt, st, _ = cv2.calcOpticalFlowPyrLK(self.prev, gray, pts, None, winSize=(21, 21), maxLevel=4)
+        ok = st.reshape(-1) == 1
+        old, new = pts[ok], nxt[ok]
+        if exclude is not None and len(new):
+            xy = np.clip(new.reshape(-1, 2).round().astype(int), 0, [gray.shape[1] - 1, gray.shape[0] - 1])
+            keep = exclude[xy[:, 1], xy[:, 0]] == 0
+            old, new = old[keep], new[keep]
+        if len(new) < self.MIN_GLOBAL_INLIERS:
+            return None
+        H, inl = cv2.findHomography(old, new, cv2.RANSAC, 3.0)
+        if H is None or inl.sum() < self.MIN_GLOBAL_INLIERS:
+            return None
+        return H
+
+    def _on_screen(self, shape: tuple[int, int]) -> bool:
+        h, w = shape
+        x0, y0 = self.corners.min(axis=0)
+        x1, y1 = self.corners.max(axis=0)
+        return x1 > 0 and y1 > 0 and x0 < w and y0 < h
 
     def _reacquire(self, gray: np.ndarray) -> np.ndarray | None:
         if self.ref_des is None or len(self.ref_kp) < 10:
@@ -111,7 +160,7 @@ class PlaneTracker:
         if des is None or len(kp) < 10:
             return None
         good = [m for m, n in (p for p in self.matcher.knnMatch(self.ref_des, des, k=2) if len(p) == 2)
-                if m.distance < 0.75 * n.distance]
+                if m.distance < 0.8 * n.distance]
         if len(good) < self.MIN_REACQUIRE_INLIERS:
             return None
         src = np.float32([self.ref_kp[m.queryIdx].pt for m in good])
@@ -121,6 +170,12 @@ class PlaneTracker:
             return None
         found = cv2.perspectiveTransform(self.ref_corners.reshape(-1, 1, 2), H).reshape(4, 2)
         if not cv2.isContourConvex(found.reshape(-1, 1, 2)):
+            return None
+        # same billboard => similar shape and size as in the first frame (rejects false matches)
+        a_ref, a_new = cv2.contourArea(self.ref_corners), cv2.contourArea(found.astype(np.float32))
+        if not (0.3 < a_new / max(a_ref, 1) < 3.0):
+            return None
+        if not (0.65 < quad_aspect(found) / max(quad_aspect(self.ref_corners), 1e-6) < 1.55):
             return None
         self.last_inliers = int(inl.sum())
         return found
@@ -139,13 +194,48 @@ class PlaneTracker:
         return cv2.goodFeaturesToTrack(gray, maxCorners=500, qualityLevel=0.01, minDistance=6, mask=mask)
 
     def update(self, gray: np.ndarray, exclude: np.ndarray | None) -> np.ndarray | None:
-        if self.lost:
-            found = self._reacquire(gray)
-            self.prev = gray
-            if found is not None:
-                self.corners = found
-                self.pts = self._features(gray, exclude)
-            return self.corners
+        """Returns the billboard corners for this frame, or None if it is lost.
+
+        mode "local": billboard visible, tracked precisely on its own texture
+        mode "coast": billboard hidden (bus in front) or off-screen; its position follows the
+                      camera motion, so the ad stays in place behind occluders and is already
+                      there when the billboard comes back (no visible switch from the old ad)
+        mode "lost":  even camera motion failed; only SIFT re-acquisition can bring it back
+        Re-acquisition (SIFT against the first frame) runs while coasting too, to correct drift.
+        """
+        if self.mode == "local" and self._track_local(gray, exclude):
+            self.coast_frames = 0
+        else:
+            if self.mode == "local":
+                self.mode = "coast"
+            if self.mode == "coast":
+                H = self._global_motion(gray, exclude)
+                moved = None if H is None else cv2.perspectiveTransform(self.corners.reshape(-1, 1, 2), H).reshape(4, 2)
+                self.coast_frames += 1
+                if moved is not None and cv2.isContourConvex(moved.reshape(-1, 1, 2)):
+                    self.corners = moved
+                    self.blind_frames = 0
+                else:  # e.g. the bus fills the frame: no background left to measure camera motion
+                    self.blind_frames += 1
+                if self.blind_frames > self.MAX_BLIND_FRAMES or self.coast_frames > self.MAX_COAST_FRAMES:
+                    self.mode, self.corners = "lost", None
+            # snap back to the exact billboard as soon as it is identifiable again
+            if self.mode == "lost" or self._on_screen(gray.shape) or self.coast_frames % 10 == 0:
+                found = self._reacquire(gray)
+                # after a long coast the dead-reckoned position has drifted: trust SIFT + shape checks
+                trust = self.corners is None or self.coast_frames > 30 or self._close(found, gray.shape) \
+                    if found is not None else False
+                if trust:
+                    self.corners, self.mode, self.coast_frames, self.blind_frames = found, "local", 0, 0
+                    self.pts = self._features(gray, exclude)
+        self.prev, self.prev_exclude = gray, exclude
+        return self.corners
+
+    def _close(self, found: np.ndarray, shape: tuple[int, int]) -> bool:
+        """Accept a re-acquired position only if it agrees with dead-reckoning (guards false matches)."""
+        return float(np.abs(found - self.corners).max()) < 0.25 * max(shape)
+
+    def _track_local(self, gray: np.ndarray, exclude: np.ndarray | None) -> bool:
         tracked = False
         if self.pts is not None and len(self.pts) >= 8:
             nxt, st, _ = cv2.calcOpticalFlowPyrLK(
@@ -167,14 +257,12 @@ class PlaneTracker:
                         self.corners = moved
                         self.last_inliers = int(inl.sum())
                         tracked = True
-        self.prev = gray
         if not tracked:
-            self.corners = None  # lost: stop drawing, try to re-acquire from next frame
             self.last_inliers = 0
             self.pts = None
-            return None
+            return False
         self.pts = self._features(gray, exclude)
-        return self.corners
+        return True
 
 
 class Occluders:
@@ -350,7 +438,7 @@ def main() -> None:
         writers[name] = cv2.VideoWriter(str(tmp_paths[name]), fourcc, fps, (w, h))
 
     tracker = None
-    idx = lost_frames = 0
+    idx = lost_frames = coast_count = 0
     limit = min(total, args.max_frames) if args.max_frames and total else (args.max_frames or total)
     while True:
         ok, frame = cap.read()
@@ -358,7 +446,10 @@ def main() -> None:
             break
         occ_mask = None
         if occ and corners is not None:
-            occ_mask = occ.mask(frame, roi_box(corners, w, h, pad=0.6), corners)
+            # while coasting, segment the whole frame: camera motion must ignore the bus everywhere
+            coasting = tracker is not None and tracker.mode != "local"
+            box = (0, 0, w, h) if coasting else roi_box(corners, w, h, pad=0.6)
+            occ_mask = occ.mask(frame, box, corners)
         if args.track:
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             if tracker is None:
@@ -367,6 +458,8 @@ def main() -> None:
                 corners = tracker.update(gray, occ_mask)
         if corners is None:
             lost_frames += 1
+        elif tracker is not None and tracker.mode == "coast":
+            coast_count += 1
         for region, ad_img in ads.items():
             out = frame if corners is None else composite(frame, ad_img, corners, occ_mask, args.harmonize, args.blur)
             writers[region].write(out)
@@ -376,11 +469,20 @@ def main() -> None:
                 cv2.putText(dbg, f"frame {idx}  billboard LOST - searching", (20, 40),
                             cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2, cv2.LINE_AA)
             else:
-                dbg = draw_debug(frame, corners, occ_mask, f"frame {idx}  inliers {tracker.last_inliers if tracker else '-'}")
+                if tracker is not None and tracker.mode == "coast":
+                    label = f"frame {idx}  hidden/off-screen: following camera motion"
+                else:
+                    label = f"frame {idx}  tracking  inliers {tracker.last_inliers if tracker else '-'}"
+                dbg = draw_debug(frame, corners, occ_mask, label)
             writers["ai_view"].write(dbg)
         idx += 1
         if idx % 30 == 0:
-            print(f"  {idx}/{limit or '?'} frames  (lost so far: {lost_frames})", flush=True)
+            line = f"  {idx}/{limit or '?'} frames  (hidden/off-screen: {coast_count}, lost: {lost_frames})"
+            print(line, flush=True)
+            try:  # fixed location so anyone can watch progress: Get-Content output\progress.txt -Wait
+                (args.out.parent / "progress.txt").write_text(f"{args.video.name}: {line.strip()}\n", encoding="utf-8")
+            except OSError:
+                pass
     cap.release()
     for wr in writers.values():
         wr.release()
@@ -389,7 +491,7 @@ def main() -> None:
         out = args.out.parent / f"{args.out.name}_{name}.mp4"
         finalize(tmp_paths[name], args.video, out)
         print(f"wrote {out}")
-    print(f"frames: {idx}, billboard lost in {lost_frames}")
+    print(f"frames: {idx}, billboard hidden/off-screen (followed by camera motion) in {coast_count}, lost in {lost_frames}")
     print("last corners:", None if corners is None else np.round(corners, 1).tolist())
 
 

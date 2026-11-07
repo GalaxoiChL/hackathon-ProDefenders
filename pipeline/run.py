@@ -57,6 +57,8 @@ def choose_ad(region: str, ads: list[dict] | None, scene: dict | None) -> tuple[
     choice = ((scene or {}).get("choices") or {}).get(region)
     if choice and choice.get("ad_id") in by_id:
         return by_id[choice["ad_id"]], choice.get("reason", "ales de AI")
+    if choice and choice.get("ad_id") is None:  # AI said: no ad here (brand safety)
+        return None, choice.get("reason", "scenă nesigură pentru branduri")
     for ad in ads or []:
         if ad.get("region") == region:
             return ad, "implicit: primul brand pentru regiune din data/ads.json (analiza AI a scenei lipsește)"
@@ -87,6 +89,7 @@ def main() -> None:
     ap.add_argument("--regions", nargs="+", help="default: every region that has an ad in data/ads.json")
     ap.add_argument("--surface", help="surface id to use (default: most confident)")
     ap.add_argument("--redetect", action="store_true", help="run detection even if surfaces.json exists")
+    ap.add_argument("--rescene", action="store_true", help="run scene analysis even if scene.json exists")
     ap.add_argument("--max-frames", type=int, default=0)
     ap.add_argument("--no-compare", action="store_true", help="skip the side-by-side video")
     args = ap.parse_args()
@@ -115,28 +118,40 @@ def main() -> None:
     print(f"surface {surface['id']}: {surface['type']}, aspect {surface['aspect']}, confidence {surface['confidence']}")
 
     # 2. which ad per region (task 2 AI choice if present) and its creative at the surface format
-    scene = load_json(out_dir / f"{clip}.scene.json")
+    # 2a. AI: understand the scene, check brand safety, pick the best ad per region (local Ollama)
+    scene_path = out_dir / f"{clip}.scene.json"
+    if args.rescene or not scene_path.exists():
+        try:
+            run([PY, "pipeline/analyze_scene.py", video, "--out", scene_path])
+        except subprocess.CalledProcessError:
+            print("scene analysis failed (is Ollama running?): falling back to the first ad per region")
+    scene = load_json(scene_path)
     work = out_dir / f"{clip}_creatives"
     work.mkdir(exist_ok=True)
     picks = {}
     for region in regions:
         ad, reason = choose_ad(region, ads, scene)
-        picks[region] = (ad, reason, creative_for(region, ad, clip, surface["aspect"], work))
-        print(f"  {region}: {(ad or {}).get('brand')}  ({reason})")
+        creative = creative_for(region, ad, clip, surface["aspect"], work) if ad else None
+        picks[region] = (ad, reason, creative)
+        print(f"  {region}: {(ad or {}).get('brand', 'fără reclamă')}  ({reason})")
+    placed = [r for r, (ad, _, _) in picks.items() if ad]
 
-    # 3. render every region in one pass + the "AI view"
-    cmd = [PY, "pipeline/insert_ad.py", video, "--corners", surfaces_path, "--surface", surface["id"],
-           "--out", out_dir / clip, "--track", "--occlude", "--debug"]
-    for region, (_, _, creative) in picks.items():
-        cmd += ["--ad", f"{region.lower()}={creative}"]
-    if args.max_frames:
-        cmd += ["--max-frames", str(args.max_frames)]
-    run(cmd)
+    # 3. render every region that gets an ad, in one pass, + the "AI view"
+    if placed:
+        cmd = [PY, "pipeline/insert_ad.py", video, "--corners", surfaces_path, "--surface", surface["id"],
+               "--out", out_dir / clip, "--track", "--occlude", "--occluders", "person,bus,truck,car", "--debug"]
+        for region in placed:
+            cmd += ["--ad", f"{region.lower()}={picks[region][2]}"]
+        if args.max_frames:
+            cmd += ["--max-frames", str(args.max_frames)]
+        run(cmd)
+    else:
+        print("no region gets an ad (brand safety): nothing to render")
 
     compare = out_dir / f"{clip}_compare.mp4"
-    if not args.no_compare:
-        run([PY, "pipeline/side_by_side.py", out_dir / clip, "--versions", *[r.lower() for r in regions],
-             "--labels", *[ascii_label(LABELS.get(r, r)).upper() for r in regions], "--height", "540", "--out", compare])
+    if placed and not args.no_compare:
+        run([PY, "pipeline/side_by_side.py", out_dir / clip, "--versions", *[r.lower() for r in placed],
+             "--labels", *[ascii_label(LABELS.get(r, r)).upper() for r in placed], "--height", "540", "--out", compare])
 
     # 4. manifest for the frontend (contract in CLAUDE.md)
     manifest = {
@@ -148,9 +163,11 @@ def main() -> None:
         "surfaces": surfaces,
         "scene": {k: v for k, v in (scene or {}).items() if k != "choices"} or None,
         "regions": [
-            {"code": r, "label": LABELS.get(r, r), "video": rel(out_dir / f"{clip}_{r.lower()}.mp4"),
+            {"code": r, "label": LABELS.get(r, r),
+             "video": rel(out_dir / f"{clip}_{r.lower()}.mp4") if ad else rel(video),  # no ad: original clip
              "ad_id": (ad or {}).get("id"), "brand": (ad or {}).get("brand"),
-             "creative": rel(creative), "reason": reason}
+             "creative": rel(creative) if creative else None, "reason": reason,
+             "fit_score": (((scene or {}).get("choices") or {}).get(r) or {}).get("fit_score")}
             for r, (ad, reason, creative) in picks.items()
         ],
     }

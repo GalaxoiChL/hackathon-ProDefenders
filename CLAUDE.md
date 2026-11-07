@@ -52,7 +52,7 @@ Scrie-ți numele în coloana **Owner**, lucrează pe branch-ul indicat și desch
 | # | Task | Ce include | Ce înseamnă „gata” | Branch | Owner |
 |---|---|---|---|---|---|
 | **1** | **Pipeline video AI** | motorul de inserare (✅ v1 gata), detectarea automată a panourilor cu AI, scriptul care leagă toți pașii și scrie `manifest.json` | dai un clip și primești automat videoclipurile pe țări + „AI view” + `manifest.json`, fără click manual | `video-pipeline` | Alex + Claude |
-| **2** | **AI de scenă și adaptarea reclamelor** | analiza scenei și brand safety cu Ollama `gemma3:4b`, alegerea reclamei per țară cu motiv, adaptarea reclamei la formatul fiecărei suprafețe (vezi „Reclamele” mai jos) | `scene.json` cu alegerile și motivele, plus câte un PNG per țară exact la formatul (`aspect`) suprafeței | `ai-ads` | _liber_ |
+| **2** | **AI de scenă și adaptarea reclamelor** | ✅ analiza scenei, brand safety și alegerea reclamei cu motiv (`analyze_scene.py`, gata). **Rămâne:** adaptarea reclamei la formatul suprafeței cu AI (recompunerea fundalului prin API de imagini), în locul decupării din `adapt_ad.py` | câte un PNG per țară în `assets/generated/<clip>/<regiune>.png`, exact la formatul (`aspect`) suprafeței, fără text tăiat | `ai-ads` | analiză: Alex + Claude; adaptare: _liber_ |
 | **3** | **Frontend demo** | player web cu țările sincronizate, selector de țară sau geolocație IP, buton „Arată ce vede AI-ul”, dashboard pentru advertiser (spații, vizibilitate, venit estimat) | demo-ul complet rulează în browser, citind `manifest.json` | `frontend` | _liber_ |
 | **4** | **Date, conținut și pitch** | `data/ads.json` cu 2–3 branduri reale per țară (RO, US, JP) și reclamele lor reale (imagini salvate în `data/creatives/`), 2–3 clipuri demo (cameră fixă, oameni prin fața panoului), cifre cost/valoare, prezentarea de 3 minute | baza de date completă, clipurile alese, slide-urile și pitch-ul repetat | `content` | _liber_ |
 
@@ -119,11 +119,13 @@ python -m venv .venv          # sau: python -m uv venv .venv
 .venv/Scripts/python.exe pipeline/run.py assets/clips/melbourne.mp4 --max-frames 480
 ```
 
-`run.py` face tot lanțul: detectare AI (dacă nu există deja `output/<clip>.surfaces.json`), alegerea reclamei pe țară, adaptarea la formatul suprafeței, randarea tuturor țărilor + „AI view” + video comparativ, apoi scrie `output/<clip>.manifest.json`.
+Progresul randării: `Get-Content output\progress.txt` (se actualizează la fiecare 30 de cadre).
+
+`run.py` face tot lanțul: detectare AI (dacă nu există deja `output/<clip>.surfaces.json`), analiza AI a scenei cu Ollama (dacă nu există `output/<clip>.scene.json`; Ollama trebuie pornit), alegerea reclamei pe țară, adaptarea la formatul suprafeței, randarea tuturor țărilor + „AI view” + video comparativ, apoi scrie `output/<clip>.manifest.json`.
 
 Folosește automat ce produc celelalte task-uri, dacă există, altfel are fallback sigur:
 - `data/ads.json` (task 4): **obligatoriu**, doar reclame reale; implicit se randează fiecare regiune care are o reclamă acolo
-- `output/<clip>.scene.json` (task 2) pentru alegerea AI și motiv; fără el: primul brand al regiunii
+- `output/<clip>.scene.json` (generat automat de `analyze_scene.py`) pentru alegerea AI și motiv; dacă Ollama nu merge: primul brand al regiunii
 - `assets/generated/<clip>/<regiune>.png` (task 2) pentru reclama adaptată de AI; fără el: `adapt_ad.py` încadrează reclama fără deformare
 
 Clipul de test nu e în git (prea mare). Se descarcă de pe [Pexels](https://www.pexels.com/video/people-walking-down-a-city-street-with-a-red-jacket-27817664/) și se salvează ca `assets/clips/melbourne.mp4`.
@@ -131,6 +133,7 @@ Clipul de test nu e în git (prea mare). Se descarcă de pe [Pexels](https://www
 | Script | Rol |
 |---|---|
 | `pipeline/run.py` | **comanda principală:** tot lanțul, de la clip la `manifest.json` |
+| `pipeline/analyze_scene.py` | **AI local (Ollama `gemma3:4b`):** descrie scena, verifică brand safety (scenă nesigură = fără reclamă), alege reclama potrivită per țară cu scor și motiv în română; scrie `scene.json` |
 | `pipeline/adapt_ad.py` | încadrează o reclamă la formatul suprafeței fără deformare (fallback pentru AI-ul din task 2) |
 | `pipeline/insert_ad.py` | motorul: urmărire (optical flow + omografie), pierdere și regăsire (SIFT), oameni în față (YOLO-seg), export pe țări + „AI view” |
 | `pipeline/detect_surfaces.py` | **AI:** găsește singur suprafețele publicitare (OWLv2 + SAM 2) și scrie `surfaces.json`; `insert_ad.py --corners` îl acceptă direct |
@@ -151,4 +154,5 @@ Clipul de test nu e în git (prea mare). Se descarcă de pe [Pexels](https://www
 - Mediu de dezvoltare: Windows, Python 3.14 în `.venv`, GPU RTX 3060 6 GB (PyTorch e momentan pe CPU), Ollama local cu `gemma3:4b`.
 - Optimizează pentru demo: fallback-uri sigure (ex. rezultate pre-randate) în loc de funcții fragile.
 - Respectă contractele JSON de mai sus. Dacă trebuie schimbate, actualizează și acest fișier.
-- Limite cunoscute ale motorului: urmărirea poate aluneca la mișcări foarte bruște; reclama e puțin prea „curată” față de scenă (de îmbunătățit armonizarea); ~0,7 s/cadru pe CPU.
+- Urmărirea are 3 moduri: `local` (panoul vizibil), `coast` (panoul ascuns de autobuz sau ieșit din cadru: poziția urmează mișcarea camerei, autobuzul e segmentat și trece prin fața reclamei), `lost` (se caută prin SIFT până reapare).
+- Limite cunoscute: reclama e puțin prea „curată” față de scenă (de îmbunătățit armonizarea); ~0,7–1,5 s/cadru pe CPU (PyTorch pe GPU ar accelera).

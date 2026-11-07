@@ -203,7 +203,8 @@ def create_app(settings: Settings | None = None, geo: GeoResolver | None = None,
     app.mount("/assets", StaticFiles(directory=settings.assets_dir, check_dir=False), name="assets")
     app.mount("/data", StaticFiles(directory=settings.data_dir, check_dir=False), name="data")
 
-    if (settings.frontend_dir / "index.html").is_file():
+    index = settings.frontend_dir / "index.html"
+    if index.is_file() and "/src/main" not in index.read_text(encoding="utf-8", errors="ignore"):
         # task 3's build/static files, served from the same origin (no CORS issues on demo day)
         app.mount("/", StaticFiles(directory=settings.frontend_dir, html=True), name="frontend")
     else:

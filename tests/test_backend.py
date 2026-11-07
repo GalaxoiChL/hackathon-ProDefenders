@@ -104,6 +104,13 @@ def test_frontend_served_when_present(root):
     assert "demo" in make_client(root).get("/").text
 
 
+def test_frontend_dist_preferred_over_vite_source(root):
+    write(root / "frontend/index.html", b'<script type="module" src="/src/main.tsx"></script>')
+    assert make_client(root).get("/").json()["docs"] == "/docs"          # source entry: not served
+    write(root / "frontend/dist/index.html", b"<h1>built</h1>")
+    assert "built" in make_client(root).get("/").text
+
+
 # ---------- clips / manifest ----------
 def test_synthesized_manifest(client):
     m = client.get("/api/clips/melbourne").json()

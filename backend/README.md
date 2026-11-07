@@ -11,7 +11,7 @@ python -m venv .venv
 ```
 
 - Documentația interactivă e la http://localhost:8000/docs
-- Dacă există `frontend/index.html`, frontendul e servit la http://localhost:8000/, de pe aceeași origine, deci fără probleme de CORS la demo.
+- După `cd frontend && npm run build`, frontendul construit (`frontend/dist/`) e servit la http://localhost:8000/, de pe aceeași origine, deci fără probleme de CORS la demo. În dezvoltare, `npm run dev` merge separat.
 - Pentru `POST /api/jobs` trebuie instalate și dependențele motorului: `pip install -r requirements.txt`.
 
 Teste: `.venv/Scripts/python -m pytest -q tests`

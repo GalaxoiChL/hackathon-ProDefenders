@@ -78,7 +78,10 @@ class Settings:
 
     @property
     def frontend_dir(self) -> Path:
-        return self.root / "frontend"
+        """The built frontend (`npm run build` -> frontend/dist). frontend/index.html is the Vite
+        source entry, which a browser cannot run without the dev server."""
+        dist = self.root / "frontend" / "dist"
+        return dist if (dist / "index.html").is_file() else self.root / "frontend"
 
     @classmethod
     def from_env(cls, root: Path | None = None) -> "Settings":

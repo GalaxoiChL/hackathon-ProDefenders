@@ -10,6 +10,8 @@ export interface MarketData {
   /** companiile care au licitat prin backend (nu sunt în ads.json) */
   companies: Ad[];
   source: "api" | "files" | "mock";
+  /** backend-ul răspunde, dar n-are încă nicio ofertă: arătăm datele de test până apare prima */
+  waitingForBids?: boolean;
 }
 
 async function fetchJson<T>(path: string): Promise<T | undefined> {
@@ -85,11 +87,14 @@ async function loadFromApi(): Promise<MarketData | undefined> {
 }
 
 export async function loadMarket(): Promise<MarketData> {
+  let waitingForBids = false;
   if (await apiAvailable()) {
     const api = await loadFromApi();
-    if (api) return api;
+    // un backend fără nicio ofertă ar lăsa Marketplace și Companies goale: până la prima ofertă reală, datele de test
+    if (api?.bids.length) return api;
+    waitingForBids = !!api;
   }
   const [slots, bids] = await Promise.all([fetchJson<Slot[]>("data/inventory.json"), fetchJson<Bid[]>("data/bids.json")]);
-  if (Array.isArray(slots) && Array.isArray(bids)) return { slots, bids, companies: [], source: "files" };
-  return { slots: mockInventory as Slot[], bids: mockBids as Bid[], companies: [], source: "mock" };
+  if (Array.isArray(slots) && Array.isArray(bids)) return { slots, bids, companies: [], source: "files", waitingForBids };
+  return { slots: mockInventory as Slot[], bids: mockBids as Bid[], companies: [], source: "mock", waitingForBids };
 }

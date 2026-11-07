@@ -18,6 +18,16 @@ export function PageHeader({ eyebrow, title, lede, aside }: { eyebrow: string; t
   );
 }
 
+/** Explicația de sub titlu când tabul arată datele de test, deși backend-ul rulează. */
+export function SampleDataNote({ show }: { show: boolean }) {
+  if (!show) return null;
+  return (
+    <p className="-mt-6 mb-8 border-l-2 border-accent pl-3 text-sm text-ink-2">
+      Sample data: the server has no real bids yet. Real bids replace these figures on their own as soon as the first one arrives.
+    </p>
+  );
+}
+
 export function Section({ title, aside, children, className = "" }: { title: string; aside?: ReactNode; children: ReactNode; className?: string }) {
   return (
     <section className={`mt-14 ${className}`}>

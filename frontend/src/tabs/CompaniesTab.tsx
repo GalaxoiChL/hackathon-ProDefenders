@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useMarket } from "../market";
 import type { AuctionResult } from "../data/auction";
 import type { Ad, Bid, Slot } from "../data/types";
-import { AdCreative, CountryMark, PageHeader, Section, Stat, compact, dec, money, num, pct } from "../components/ui";
+import { AdCreative, CountryMark, PageHeader, Section, Stat, compact, dec, money, num, pct, SampleDataNote } from "../components/ui";
 
 interface CompanyStats {
   brand: Ad;
@@ -45,7 +45,7 @@ function computeStats(brand: Ad, slots: Slot[], bids: Bid[], results: Record<str
 }
 
 export default function CompaniesTab() {
-  const { brands, slots, bids, results, currency } = useMarket();
+  const { brands, slots, bids, results, currency , waitingForBids } = useMarket();
   const cash = (n: number) => money(n, currency);
   const stats = brands
     .map((b) => computeStats(b, slots, bids, results))
@@ -60,6 +60,7 @@ export default function CompaniesTab() {
         title="Companies"
         lede="How every brand performs on the marketplace: what it bid, what it won, what it paid and who saw it. Audience and impression figures are simulated for the prototype."
       />
+      <SampleDataNote show={waitingForBids} />
 
       <div className="grid gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
         {stats.filter((s) => s.bids.length > 0).map((s) => {

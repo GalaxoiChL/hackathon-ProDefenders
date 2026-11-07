@@ -1,18 +1,72 @@
 [
   {
+    "id": "metro-s2-ro",
+    "clip": "metro",
+    "surface_id": "s2",
+    "region": "RO",
+    "title": "Metro platform, digital screen",
+    "categories": [
+      "food",
+      "coffee",
+      "beverage",
+      "electronics"
+    ],
+    "tags": [
+      "urban",
+      "morning",
+      "busy"
+    ],
+    "screen_time_sec": 11,
+    "visibility": 6.5,
+    "audience": 300000,
+    "cpm": 8,
+    "currency": "EUR",
+    "closes_in_sec": 3600
+  },
+  {
+    "id": "harbour-s1-jp",
+    "clip": "harbour",
+    "surface_id": "s1",
+    "region": "JP",
+    "title": "Harbour promenade, bus shelter poster",
+    "categories": [
+      "food",
+      "coffee",
+      "beverage"
+    ],
+    "tags": [
+      "urban",
+      "evening",
+      "calm"
+    ],
+    "screen_time_sec": 9,
+    "visibility": 8,
+    "audience": 1200000,
+    "cpm": 12,
+    "currency": "EUR",
+    "closes_in_sec": 5400
+  },
+  {
     "id": "melbourne-s1-ro",
     "clip": "melbourne",
     "surface_id": "s1",
     "region": "RO",
     "title": "Melbourne street, facade billboard",
-    "categories": ["food", "coffee", "beverage"],
-    "tags": ["urban", "day", "busy"],
+    "categories": [
+      "food",
+      "coffee",
+      "beverage"
+    ],
+    "tags": [
+      "urban",
+      "day",
+      "busy"
+    ],
     "screen_time_sec": 14.2,
     "visibility": 7.5,
     "audience": 300000,
     "cpm": 8,
-    "currency": "EUR",
-    "closes_in_sec": 540
+    "currency": "EUR"
   },
   {
     "id": "melbourne-s1-us",
@@ -20,14 +74,21 @@
     "surface_id": "s1",
     "region": "US",
     "title": "Melbourne street, facade billboard",
-    "categories": ["food", "coffee", "beverage"],
-    "tags": ["urban", "day", "busy"],
+    "categories": [
+      "food",
+      "coffee",
+      "beverage"
+    ],
+    "tags": [
+      "urban",
+      "day",
+      "busy"
+    ],
     "screen_time_sec": 14.2,
     "visibility": 7.5,
     "audience": 5000000,
     "cpm": 15,
-    "currency": "EUR",
-    "closes_in_sec": 780
+    "currency": "EUR"
   },
   {
     "id": "melbourne-s1-jp",
@@ -35,14 +96,21 @@
     "surface_id": "s1",
     "region": "JP",
     "title": "Melbourne street, facade billboard",
-    "categories": ["food", "coffee", "beverage"],
-    "tags": ["urban", "day", "busy"],
+    "categories": [
+      "food",
+      "coffee",
+      "beverage"
+    ],
+    "tags": [
+      "urban",
+      "day",
+      "busy"
+    ],
     "screen_time_sec": 14.2,
     "visibility": 7.5,
     "audience": 1200000,
     "cpm": 12,
-    "currency": "EUR",
-    "closes_in_sec": 1020
+    "currency": "EUR"
   },
   {
     "id": "harbour-s1-ro",
@@ -50,8 +118,16 @@
     "surface_id": "s1",
     "region": "RO",
     "title": "Harbour promenade, bus shelter poster",
-    "categories": ["food", "coffee", "beverage"],
-    "tags": ["urban", "evening", "calm"],
+    "categories": [
+      "food",
+      "coffee",
+      "beverage"
+    ],
+    "tags": [
+      "urban",
+      "evening",
+      "calm"
+    ],
     "screen_time_sec": 9,
     "visibility": 8,
     "audience": 300000,
@@ -64,8 +140,16 @@
     "surface_id": "s1",
     "region": "US",
     "title": "Harbour promenade, bus shelter poster",
-    "categories": ["food", "coffee", "beverage"],
-    "tags": ["urban", "evening", "calm"],
+    "categories": [
+      "food",
+      "coffee",
+      "beverage"
+    ],
+    "tags": [
+      "urban",
+      "evening",
+      "calm"
+    ],
     "screen_time_sec": 9,
     "visibility": 8,
     "audience": 5000000,
@@ -78,8 +162,17 @@
     "surface_id": "s2",
     "region": "US",
     "title": "Metro platform, digital screen",
-    "categories": ["food", "coffee", "beverage", "electronics"],
-    "tags": ["urban", "morning", "busy"],
+    "categories": [
+      "food",
+      "coffee",
+      "beverage",
+      "electronics"
+    ],
+    "tags": [
+      "urban",
+      "morning",
+      "busy"
+    ],
     "screen_time_sec": 11,
     "visibility": 6.5,
     "audience": 5000000,
@@ -92,8 +185,17 @@
     "surface_id": "s2",
     "region": "JP",
     "title": "Metro platform, digital screen",
-    "categories": ["food", "coffee", "beverage", "electronics"],
-    "tags": ["urban", "morning", "busy"],
+    "categories": [
+      "food",
+      "coffee",
+      "beverage",
+      "electronics"
+    ],
+    "tags": [
+      "urban",
+      "morning",
+      "busy"
+    ],
     "screen_time_sec": 11,
     "visibility": 6.5,
     "audience": 1200000,

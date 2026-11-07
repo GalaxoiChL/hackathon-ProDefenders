@@ -73,7 +73,7 @@ const byId = (id: string) => INTEGRATIONS.find((i) => i.id === id)!;
 function Tile({ it, active, onClick }: { it: Integration; active: boolean; onClick: () => void }) {
   const Icon = it.icon;
   return (
-    <button
+    <button type="button"
       onClick={onClick}
       aria-pressed={active}
       className={`group flex flex-col items-start border bg-card p-5 text-left transition-colors ${
@@ -156,7 +156,7 @@ export default function HowItWorksTab() {
                   {s.uses.map((id) => {
                     const it = byId(id);
                     return (
-                      <button
+                      <button type="button"
                         key={id}
                         onClick={() => setSelected(id)}
                         className={`px-1.5 py-0.5 text-xs ${KIND_STYLE[it.kind]} ${id === selected ? "outline outline-2 outline-offset-1 outline-ink" : ""}`}

@@ -305,6 +305,59 @@ class Occluders:
         return full
 
 
+class ReferenceKeyer:
+    """Finds anything in front of the billboard by comparing with how the billboard originally looked.
+
+    We know the exact background (the old ad, captured on the first frame). Where the current frame
+    no longer matches it, something is in front: a bus, a person, a pole - even if YOLO missed it.
+    This is the classic technique of broadcast virtual advertising, and it does not flicker the way
+    a per-frame detector can.
+    """
+
+    def __init__(self, first_frame: np.ndarray, corners: np.ndarray, size: int = 256, threshold: float = 32.0):
+        self.aspect = quad_aspect(corners)
+        self.rw, self.rh = (size, max(8, round(size / self.aspect))) if self.aspect >= 1 \
+            else (max(8, round(size * self.aspect)), size)
+        rect = np.float32([[0, 0], [self.rw, 0], [self.rw, self.rh], [0, self.rh]])
+        M = cv2.getPerspectiveTransform(corners.astype(np.float32), rect)
+        ref = cv2.warpPerspective(first_frame, M, (self.rw, self.rh), flags=cv2.INTER_AREA)
+        self.ref_lab = cv2.cvtColor(cv2.GaussianBlur(ref, (0, 0), 1.5), cv2.COLOR_BGR2LAB).astype(np.float32)
+        self.rect = rect
+        self.threshold = threshold
+
+    def mask(self, frame: np.ndarray, corners: np.ndarray) -> tuple[np.ndarray, float]:
+        """Full-frame uint8 mask of pixels in front of the billboard, and the covered fraction (0..1)."""
+        h, w = frame.shape[:2]
+        full = np.zeros((h, w), np.uint8)
+        x0, y0, x1, y1 = roi_box(corners, w, h, pad=0.0)
+        if x1 - x0 < 4 or y1 - y0 < 4:
+            return full, 0.0
+        local = (corners - [x0, y0]).astype(np.float32)
+        M = cv2.getPerspectiveTransform(self.rect, local)
+        size = (x1 - x0, y1 - y0)
+        ref = cv2.warpPerspective(self.ref_lab, M, size, flags=cv2.INTER_LINEAR)
+        valid = cv2.warpPerspective(np.full((self.rh, self.rw), 255, np.uint8), M, size, flags=cv2.INTER_NEAREST)
+        valid = cv2.erode(valid, np.ones((5, 5), np.uint8)) > 0  # ignore the outermost pixels (edge jitter)
+        if valid.sum() < 50:
+            return full, 0.0
+        cur = cv2.cvtColor(cv2.GaussianBlur(frame[y0:y1, x0:x1], (0, 0), 1.5), cv2.COLOR_BGR2LAB).astype(np.float32)
+        # absorb global lighting changes: align the median brightness of the two
+        ref[..., 0] += np.median(cur[..., 0][valid]) - np.median(ref[..., 0][valid])
+        diff = 0.5 * np.abs(cur[..., 0] - ref[..., 0]) + np.abs(cur[..., 1] - ref[..., 1]) + np.abs(cur[..., 2] - ref[..., 2])
+        diff = cv2.GaussianBlur(diff, (0, 0), 2.0)
+        m = ((diff > self.threshold) & valid).astype(np.uint8) * 255
+        # remove speckles from tracking jitter on the old ad's sharp edges, then close small holes
+        m = cv2.morphologyEx(m, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
+        n, labels, stats, _ = cv2.connectedComponentsWithStats(m)
+        min_area = 0.01 * valid.sum()
+        keep = np.zeros(n, bool)
+        keep[1:] = stats[1:, cv2.CC_STAT_AREA] >= min_area
+        m = np.where(keep[labels], 255, 0).astype(np.uint8)
+        m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
+        full[y0:y1, x0:x1] = m
+        return full, float((m > 0)[valid].mean())
+
+
 def roi_box(corners: np.ndarray, w: int, h: int, pad: float) -> tuple[int, int, int, int]:
     """Axis-aligned box around the billboard, grown by `pad` (fraction of its size), clipped to the frame."""
     x0, y0 = corners.min(axis=0)
@@ -438,6 +491,7 @@ def main() -> None:
         writers[name] = cv2.VideoWriter(str(tmp_paths[name]), fourcc, fps, (w, h))
 
     tracker = None
+    keyer = None
     idx = lost_frames = coast_count = 0
     limit = min(total, args.max_frames) if args.max_frames and total else (args.max_frames or total)
     while True:
@@ -456,12 +510,20 @@ def main() -> None:
                 tracker = PlaneTracker(gray, corners)
             else:
                 corners = tracker.update(gray, occ_mask)
+        if keyer is None:
+            keyer = ReferenceKeyer(frame, corners)
+        covered = 0.0
+        if corners is not None:
+            # what is in front of the billboard: YOLO (people, vehicles) OR "doesn't look like the old ad"
+            key_mask, covered = keyer.mask(frame, corners)
+            occ_mask = key_mask if occ_mask is None else np.maximum(occ_mask, key_mask)
+        hide = corners is None or covered > 0.6  # billboard mostly hidden: show no fragments of the ad
         if corners is None:
             lost_frames += 1
         elif tracker is not None and tracker.mode == "coast":
             coast_count += 1
         for region, ad_img in ads.items():
-            out = frame if corners is None else composite(frame, ad_img, corners, occ_mask, args.harmonize, args.blur)
+            out = frame if hide else composite(frame, ad_img, corners, occ_mask, args.harmonize, args.blur)
             writers[region].write(out)
         if args.debug:
             if corners is None:
@@ -470,9 +532,9 @@ def main() -> None:
                             cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 2, cv2.LINE_AA)
             else:
                 if tracker is not None and tracker.mode == "coast":
-                    label = f"frame {idx}  hidden/off-screen: following camera motion"
+                    label = f"frame {idx}  hidden/off-screen: following camera motion  covered {covered:.0%}"
                 else:
-                    label = f"frame {idx}  tracking  inliers {tracker.last_inliers if tracker else '-'}"
+                    label = f"frame {idx}  tracking  inliers {tracker.last_inliers if tracker else '-'}  covered {covered:.0%}"
                 dbg = draw_debug(frame, corners, occ_mask, label)
             writers["ai_view"].write(dbg)
         idx += 1

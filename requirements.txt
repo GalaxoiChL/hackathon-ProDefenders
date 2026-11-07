@@ -3,3 +3,4 @@ numpy
 ultralytics
 imageio-ffmpeg
 pillow
+transformers

@@ -7,7 +7,17 @@ __pycache__/
 .env
 
 # rendered results and large media (regenerate with the pipeline)
-output/
+output/*
+# ...except the 9 s Melbourne demo the frontend plays (repo is private: real brand ads stay in the team)
+!output/melbourne.manifest.json
+!output/melbourne.scene.json
+!output/melbourne.surfaces.json
+!output/melbourne_original.mp4
+!output/melbourne_ro.mp4
+!output/melbourne_jp.mp4
+!output/melbourne_ai_view.mp4
+!output/melbourne_compare.mp4
+!output/melbourne_creatives/
 assets/clips/*.mp4
 assets/clips/*.mov
 

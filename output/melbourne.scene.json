@@ -1,0 +1,36 @@
+{
+  "clip": "melbourne",
+  "model": "gemma3:4b",
+  "location": "Melbourne, Australia",
+  "time_of_day": "midday",
+  "weather": "overcast",
+  "mood": "urban, busy, slightly muted",
+  "audience": "general public, likely tourists and residents",
+  "tags": [
+    "cityscape",
+    "urban",
+    "street",
+    "billboard",
+    "advertising"
+  ],
+  "brand_safe": true,
+  "brand_safety_issues": [],
+  "summary_ro": "Scena prezintă o intersecție aglomerată din Melbourne, cu o plimbare de zi, o zi înnorată. Există o afișare publicitară pe un clădire înaltă, dar nu există elemente care să sugereze riscuri sau conținut inadecvat pentru publicul larg. Este o locație sigură și potrivită pentru majoritatea brandurilor.",
+  "city_guess": "Melbourne",
+  "brand_safety": {
+    "safe": true,
+    "reasons": []
+  },
+  "choices": {
+    "RO": {
+      "ad_id": "ro-pizza-hut",
+      "fit_score": 90,
+      "reason": "Consider că Pizza Hut ar fi cea mai potrivită variantă. Scena este într-o intersecție aglomerată din Melbourne, la prânz, cu vreme înnorată – perfect pentru un public urban, probabil studenți sau grupuri de prieteni care caută o masă rapidă. Mesajul despre Pizza Bar Nelimitat, oferit între 12:00 și 15:00, se potrivește perfect cu momentul și locația scenei."
+    },
+    "JP": {
+      "ad_id": "jp-mcdonalds",
+      "fit_score": 85,
+      "reason": "Având în vedere că scena este într-o zonă urbană, Melbourne, la prânz, cu vreme înnorată, un McDonald's fries ar fi o opțiune excelentă pentru o gustare rapidă. Publicul țintă, o combinație de turiști și localnici, ar fi interesat de o ofertă de mâncare, iar mesajul publicitar specific (fripturi mari) se potrivește perfect cu atmosfera urbană și timpul de zi."
+    }
+  }
+}

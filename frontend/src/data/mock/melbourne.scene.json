@@ -4,10 +4,22 @@
   "time_of_day": "day",
   "weather": "overcast",
   "mood": "busy",
-  "brand_safety": { "safe": true, "reasons": [] },
+  "brand_safety": {
+    "safe": true,
+    "reasons": []
+  },
   "choices": {
-    "RO": { "ad_id": "ro-pizza-bunicii", "reason": "Stradă aglomerată la prânz: mâncare rapidă și ieftină." },
-    "US": { "ad_id": "us-burger-bros", "reason": "Mediu urban, ritm alert: burger la preț mic." },
-    "JP": { "ad_id": "jp-sakura-ramen", "reason": "Cer înnorat: un bol de ramen cald." }
+    "RO": {
+      "ad_id": "ro-pizza-bunicii",
+      "reason": "Busy street at lunchtime: quick, cheap food."
+    },
+    "US": {
+      "ad_id": "us-burger-bros",
+      "reason": "Urban setting, fast pace: a low-priced burger."
+    },
+    "JP": {
+      "ad_id": "jp-sakura-ramen",
+      "reason": "Overcast sky: a hot bowl of ramen."
+    }
   }
 }

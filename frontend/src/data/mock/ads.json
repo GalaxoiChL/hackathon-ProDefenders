@@ -4,33 +4,67 @@
     "region": "RO",
     "brand": "Pizza Bunicii",
     "category": "food",
-    "headline": "Felia caldă, la tine în cartier",
+    "headline": "A warm slice, right in your neighbourhood",
     "price": "19 lei",
-    "colors": { "bg": "#C81E23", "fg": "#FFFFFF", "accent": "#FFC800" },
-    "fits": ["day", "evening", "urban", "busy"],
-    "avoid": ["violence", "accident", "sad"]
+    "colors": {
+      "bg": "#C81E23",
+      "fg": "#FFFFFF",
+      "accent": "#FFC800"
+    },
+    "fits": [
+      "day",
+      "evening",
+      "urban",
+      "busy"
+    ],
+    "avoid": [
+      "violence",
+      "accident",
+      "sad"
+    ]
   },
   {
     "id": "ro-cafeneaua-colt",
     "region": "RO",
     "brand": "Cafeneaua din Colț",
     "category": "coffee",
-    "headline": "Espresso adevărat, în drum spre birou",
+    "headline": "Real espresso on your way to work",
     "price": "9 lei",
-    "colors": { "bg": "#3B2416", "fg": "#F5E9DA", "accent": "#D9A066" },
-    "fits": ["morning", "rain", "cold", "urban"],
-    "avoid": ["violence", "accident"]
+    "colors": {
+      "bg": "#3B2416",
+      "fg": "#F5E9DA",
+      "accent": "#D9A066"
+    },
+    "fits": [
+      "morning",
+      "rain",
+      "cold",
+      "urban"
+    ],
+    "avoid": [
+      "violence",
+      "accident"
+    ]
   },
   {
     "id": "ro-tech-planet",
     "region": "RO",
     "brand": "Tech Planet",
     "category": "electronics",
-    "headline": "Laptopuri pentru tot anul universitar",
-    "price": "de la 2.499 lei",
-    "colors": { "bg": "#0E2A3B", "fg": "#FFFFFF", "accent": "#2BB3C0" },
-    "fits": ["urban", "day"],
-    "avoid": ["violence"]
+    "headline": "Laptops for the whole university year",
+    "price": "from 2,499 lei",
+    "colors": {
+      "bg": "#0E2A3B",
+      "fg": "#FFFFFF",
+      "accent": "#2BB3C0"
+    },
+    "fits": [
+      "urban",
+      "day"
+    ],
+    "avoid": [
+      "violence"
+    ]
   },
   {
     "id": "us-burger-bros",
@@ -39,9 +73,22 @@
     "category": "food",
     "headline": "Since 1987 · Open late",
     "price": "$4.99",
-    "colors": { "bg": "#14285A", "fg": "#FFFFFF", "accent": "#F03C3C" },
-    "fits": ["day", "evening", "urban", "busy"],
-    "avoid": ["violence", "accident", "sad"]
+    "colors": {
+      "bg": "#14285A",
+      "fg": "#FFFFFF",
+      "accent": "#F03C3C"
+    },
+    "fits": [
+      "day",
+      "evening",
+      "urban",
+      "busy"
+    ],
+    "avoid": [
+      "violence",
+      "accident",
+      "sad"
+    ]
   },
   {
     "id": "us-cold-brew-co",
@@ -50,9 +97,19 @@
     "category": "coffee",
     "headline": "Smooth. Strong. Ready when you are.",
     "price": "$3.50",
-    "colors": { "bg": "#0F172A", "fg": "#E2E8F0", "accent": "#38BDF8" },
-    "fits": ["morning", "sunny", "urban"],
-    "avoid": ["violence"]
+    "colors": {
+      "bg": "#0F172A",
+      "fg": "#E2E8F0",
+      "accent": "#38BDF8"
+    },
+    "fits": [
+      "morning",
+      "sunny",
+      "urban"
+    ],
+    "avoid": [
+      "violence"
+    ]
   },
   {
     "id": "jp-sakura-ramen",
@@ -61,9 +118,23 @@
     "category": "food",
     "headline": "Hot bowls, fast. Tokyo style.",
     "price": "¥680",
-    "colors": { "bg": "#FAF5EB", "fg": "#1E1E1E", "accent": "#DC283C" },
-    "fits": ["evening", "rain", "cold", "overcast", "urban"],
-    "avoid": ["violence", "accident", "sad"]
+    "colors": {
+      "bg": "#FAF5EB",
+      "fg": "#1E1E1E",
+      "accent": "#DC283C"
+    },
+    "fits": [
+      "evening",
+      "rain",
+      "cold",
+      "overcast",
+      "urban"
+    ],
+    "avoid": [
+      "violence",
+      "accident",
+      "sad"
+    ]
   },
   {
     "id": "jp-matcha-go",
@@ -72,8 +143,19 @@
     "category": "beverage",
     "headline": "Fresh matcha, on the move",
     "price": "¥420",
-    "colors": { "bg": "#E8F5E1", "fg": "#1F3D1A", "accent": "#5BA34A" },
-    "fits": ["morning", "day", "sunny", "urban"],
-    "avoid": ["violence"]
+    "colors": {
+      "bg": "#E8F5E1",
+      "fg": "#1F3D1A",
+      "accent": "#5BA34A"
+    },
+    "fits": [
+      "morning",
+      "day",
+      "sunny",
+      "urban"
+    ],
+    "avoid": [
+      "violence"
+    ]
   }
 ]

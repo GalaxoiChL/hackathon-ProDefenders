@@ -84,6 +84,56 @@ Privitorii din țări fără versiune proprie primesc **cea mai apropiată versi
 
 Datele țărilor sunt în `backend/countries.json` (nume în română din CLDR, limbă oficială, monedă, regiune UN M49, CPM estimat după nivelul de venit). Le regenerezi cu `pip install babel` și `python backend/tools/build_countries.py`.
 
+## Prospectare advertiseri: căutare de firme + emailuri + licitație
+
+Două unelte AI care aduc advertiseri pentru spațiile din video:
+
+**1. Căutarea de firme locale** (`POST /api/outreach/campaigns`)
+1. găsește firmele din categoria cerută într-un oraș al pieței prin OpenStreetMap (gratuit, fără cheie). Dacă e setat `BRAVE_API_KEY`, caută și cu Brave Search.
+2. exclude implicit lanțurile mari (McDonald's, KFC…), fiindcă vrem firme **regionale**
+3. citește site-ul firmei (cel mult 3 pagini, respectând `robots.txt`) ca să afle emailul public de contact și ce face firma
+4. **AI-ul** (Ollama `gemma3:4b`) dă un scor de potrivire între 0 și 100, cu motiv, și verifică brand safety (exclude jocuri de noroc, tutun etc.)
+5. scrie **emailul personalizat în limba țării**, cu link de licitație semnat pentru fiecare firmă
+
+**2. Emailurile automate**: niciun email nu pleacă fără un om care l-a aprobat:
+
+```
+ciornă ──(PATCH editează / approve / reject)──▶ aprobat ──(send, confirm=true)──▶ outbox sau trimis
+```
+
+| Regulă (impusă de cod, nu de AI) | De ce |
+|---|---|
+| `OUTREACH_SEND_ENABLED=false` (implicit): emailurile ajung doar ca fișiere `.eml` în `output/outbox/` | nimic nu pleacă din greșeală |
+| `OUTREACH_TEST_RECIPIENT=adresa@ta`: **toate** emailurile merg la tine | demo sigur, cu emailuri reale în inbox |
+| link de dezabonare + headerul `List-Unsubscribe` în fiecare email; cine se dezabonează nu mai primește nimic | GDPR / CAN-SPAM |
+| subsol fix: cine suntem, de unde avem adresa, cum se oprește | transparență |
+| adresele de tip `prenume.nume@` sunt sărite implicit | sunt date personale (GDPR) |
+| limită zilnică (`OUTREACH_DAILY_LIMIT`, implicit 20) | fără spam |
+
+⚠️ În unele țări (de ex. Germania) emailul comercial nesolicitat e interzis chiar și între firme. Pentru demo folosește `OUTREACH_TEST_RECIPIENT`.
+
+**3. Licitația**: fiecare clip × piață e un spațiu publicitar (`/api/placements`). Prețul minim e CPM-ul pieței × numărul de privitori, de exemplu DE: $10,5 × 10.000 / 1000 = $105. Firma deschide linkul din email (`/bid/<token>`), vede clipul și trimite oferta. Linkul e semnat (HMAC), deci nu poate fi falsificat sau ghicit. Cea mai mare ofertă câștigă: `/api/placements/{id}/bids`.
+
+| Metodă | Ruta | Ce face |
+|---|---|---|
+| POST | `/api/outreach/campaigns` | `{market, category, city?, clip?, limit, min_score}` pornește căutarea în fundal |
+| GET | `/api/outreach/campaigns/{id}` | stare, jurnal, câte emailuri sunt în fiecare stare |
+| GET | `/api/outreach/campaigns/{id}/leads` | firmele găsite, cu scor AI și motiv |
+| GET | `/api/outreach/campaigns/{id}/emails` | ciornele |
+| PATCH | `/api/outreach/emails/{id}` | editează subiectul sau textul |
+| POST | `/api/outreach/emails/{id}/approve` · `/reject` | aprobă sau respinge |
+| POST | `/api/outreach/campaigns/{id}/send` | `{confirm: true, approve_all?}` trimite emailurile aprobate |
+| GET | `/api/outreach/status` | dacă trimiterea e pornită, SMTP, limită, AI |
+| GET | `/api/placements`, `/api/placements/{id}/bids` | spațiile și ofertele |
+| POST | `/api/bids` | `{token, amount_usd, company?, message?}` |
+| GET | `/bid/{token}` | pagina de licitație din email |
+
+Exemplu:
+```bash
+curl -X POST localhost:8000/api/outreach/campaigns -H "Content-Type: application/json"      -d '{"market": "RO", "category": "food", "limit": 5}'
+```
+Categorii: `food`, `drinks`, `retail`, `beauty`, `fitness`, `hotel`, `any`. Fără Ollama, scorul și emailul (RO / EN) se fac după reguli fixe, iar răspunsul spune `"ai": "rules"`. Serverul public Overpass e des supraîncărcat, așa că se încearcă automat alte servere, iar rezultatele rămân în cache o săptămână (`output/outreach_cache/`).
+
 ## Fallback-uri (demo-ul nu rămâne gol)
 
 | Lipsește | Ce face serverul |

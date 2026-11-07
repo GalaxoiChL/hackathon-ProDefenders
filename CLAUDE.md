@@ -24,7 +24,7 @@ Piața există deja (Mirriad, Amazon Prime Video), dar e enterprise și manuală
 | Problem solving | 25 | oamenii sar peste reclame; o plasare în video nu poate fi sărită; catalog vechi transformat în inventar publicitar nou |
 | AI-driven innovation | 25 | AI în fiecare pas: detecție, înțelegerea scenei, alegere, generare, segmentare |
 | Technical excellence | 25 | pipeline curat, contracte JSON clare între module, fallback-uri |
-| Third-party integrations | 15 | API de imagini (ideal Adobe Firefly), geolocație IP, Ollama |
+| Third-party integrations | 15 | API de imagini (ideal Adobe Firefly), geolocație IP, Ollama, OpenStreetMap (căutare de firme), SMTP |
 | Product experience & demo | 10 | player cu 3 țări sincronizate și butonul „Arată ce vede AI-ul” |
 | Bonus cost vs. valoare | +10 | cost per plasare: cenți; o editare manuală: ore de editor |
 
@@ -58,7 +58,7 @@ Scrie-ți numele în coloana **Owner**, lucrează pe branch-ul indicat și desch
 | **2** | **AI de scenă și generare reclame** | analiza scenei și brand safety cu Ollama `gemma3:4b`, alegerea reclamei per țară cu motiv, generarea vizualului prin API de imagini + textul pus de cod din `ads.json` | `scene.json` cu alegerile și motivele, plus câte un PNG per țară la formatul panoului | `ai-ads` | _liber_ |
 | **3** | **Frontend demo** | player web cu țările sincronizate, selector de țară sau geolocație IP, buton „Arată ce vede AI-ul”, dashboard pentru advertiser (spații, vizibilitate, venit estimat) | demo-ul complet rulează în browser, citind `manifest.json` | `frontend` | _liber_ |
 | **4** | **Date, conținut și pitch** | `data/ads.json` cu 2–3 branduri inventate per piață (RO, US, JP + cele 12 europene din `backend/README.md`; backend-ul are deja câte un exemplu) + poze de produs, 2–3 clipuri demo (cameră fixă, oameni prin fața panoului), cifre cost/valoare, prezentarea de 3 minute | baza de date completă, clipurile alese, slide-urile și pitch-ul repetat | `content` | _liber_ |
-| **B** | **Server API** | FastAPI în `backend/`: servește manifestele și video-urile (cu seek), 15 piețe demo (US, RO, JP + 12 din Europa), geolocație IP care mapează orice țară din lume pe cea mai apropiată piață, cifrele pentru dashboard, joburi care rulează pipeline-ul și scriu `manifest.json`, fallback-uri pentru demo | ✅ v1 gata: `uvicorn backend.app:app`, 39 de teste trec; detalii în `backend/README.md` | `backend` | _liber_ |
+| **B** | **Server API** | FastAPI în `backend/`: servește manifestele și video-urile (cu seek), 15 piețe demo (US, RO, JP + 12 din Europa), geolocație IP care mapează orice țară din lume pe cea mai apropiată piață, cifrele pentru dashboard, joburi care rulează pipeline-ul și scriu `manifest.json`, fallback-uri pentru demo; **prospectare advertiseri**: AI-ul caută firme locale (OpenStreetMap), le califică și le scrie emailuri în limba lor, cu aprobare umană, iar firmele licitează pe spațiile din video | ✅ v1 gata: `uvicorn backend.app:app`, 56 de teste trec; detalii în `backend/README.md` | `backend` | _liber_ |
 
 Dependențe: **3** poate începe imediat cu videoclipurile existente din `output/`. **2** are nevoie de formatul `ads.json` (de mai jos) pentru textul reclamelor; până e gata baza de date, folosește exemplul din contract. **1** leagă totul la final; până atunci fiecare task rulează singur, pe fișiere.
 
@@ -151,6 +151,7 @@ Serverul API (pornește și fără clipuri randate):
 - **Nu lucrăm direct pe `main`.** Branch-ul tău, apoi Pull Request.
 - `git pull` des. Commit-uri mici, cu mesaje clare.
 - **Nu urcăm** videoclipuri, `output/`, greutăți de modele (`*.pt`) sau `.env`; sunt în `.gitignore`.
+- Emailurile către firme pleacă **doar** aprobate de un om și cu `OUTREACH_SEND_ENABLED=true`; în demo, cu `OUTREACH_TEST_RECIPIENT`.
 - **Cheile API** stau doar în `.env` (ex. `IMAGE_API_KEY=...`), niciodată în cod, chat sau commit.
 - Branduri **inventate** în demo (nu Pizza Hut sau McDonald's reale) și clipuri cu licență liberă (Pexels).
 

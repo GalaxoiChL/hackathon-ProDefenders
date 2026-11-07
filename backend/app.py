@@ -30,7 +30,8 @@ def manifest_out(m: Manifest) -> dict:
     return data
 
 
-def create_app(settings: Settings | None = None, geo: GeoResolver | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, geo: GeoResolver | None = None,
+               outreach_settings=None, outreach_http=None, outreach_llm=None) -> FastAPI:
     settings = settings or Settings.from_env()
     store = Store(settings)
     geo = geo or GeoResolver(settings)
@@ -190,6 +191,11 @@ def create_app(settings: Settings | None = None, geo: GeoResolver | None = None)
         if not job:
             raise HTTPException(404, f"no job {job_id!r}")
         return job.public(log_lines)
+
+    # ---------------- outreach: lead search, emails, bidding ----------------
+    from .outreach.routes import build as build_outreach  # noqa: PLC0415
+    router, app.state.outreach = build_outreach(settings, store, outreach_settings, outreach_http, outreach_llm)
+    app.include_router(router)
 
     # ---------------- files ----------------
     # Starlette's FileResponse answers Range requests, so <video> seeking works.

@@ -3,7 +3,7 @@
 *.jpg binary
 *.mp4 binary
 
-# rendered demo videos shared with the team: stored with Git LFS (pipeline/publish_media.py writes them, demo/index.html plays them)
-demo/media/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
-demo/media/**/*.png filter=lfs diff=lfs merge=lfs -text
-demo/media/**/*.jpg filter=lfs diff=lfs merge=lfs -text
+# rendered demo videos shared with the team: stored with Git LFS (backend/pipeline/publish_media.py writes them, frontend/demo/index.html plays them)
+frontend/demo/media/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
+frontend/demo/media/**/*.png filter=lfs diff=lfs merge=lfs -text
+frontend/demo/media/**/*.jpg filter=lfs diff=lfs merge=lfs -text

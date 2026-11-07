@@ -24,9 +24,9 @@ Tabs live in `src/tabs.config.ts`; reorder or hide them there.
 ## Data
 
 Sources, in order (see `src/data/loadClip.ts`; the footer shows which one is in use):
-1. **Backend API** (`backend` branch, `uvicorn backend.app:app --port 8000`). In dev, Vite proxies `/api` to it (`BACKEND_URL` to change). Uses `/api/clips`, `/api/clips/{clip}`, `/scene`, `/surfaces`, `/stats`, `/play` (viewer country from IP) and `/api/ads`.
-2. **Team videos** in `demo/media/<clip>/` (Git LFS), published by `pipeline/publish_media.py` after every render; listed in `demo/media/index.json` (re-checked every 30 s in dev) and embedded in `demo/media/catalog.js` (for the page opened from disk).
-3. **Local files** in `output/` written by `pipeline/run.py`; both manifest shapes are normalised.
+1. **Backend API** (`python backend/start.py`, port 8000). In dev, Vite proxies `/api` to it (`BACKEND_URL` to change). Uses `/api/clips`, `/api/clips/{clip}`, `/scene`, `/surfaces`, `/stats`, `/play` (viewer country from IP) and `/api/ads`.
+2. **Team videos** in `frontend/demo/media/<clip>/` (Git LFS), published by `backend/pipeline/publish_media.py` after every render; listed in `frontend/demo/media/index.json` (re-checked every 30 s in dev) and embedded in `frontend/demo/media/catalog.js` (for the page opened from disk).
+3. **Local files** in `backend/output/` written by `backend/pipeline/run.py`; both manifest shapes are normalised.
 4. **Sample data** in `src/data/mock/`.
 
 Videos are served in 4 MB range chunks in dev, because browsers allow only 6 connections per server and Compare plays up to 6 videos at once. The backend serves whole files, so the same limit applies there.
@@ -44,7 +44,7 @@ Open question for the team: for the auction winner to really appear in Watch, th
 
 ## Demo without installing anything
 
-`demo/index.html` is the whole site in one file (`npm run build:demo` rebuilds it, only when the frontend code changes). Double-click it: it plays the clips in `demo/media/` and needs no Node, Python or backend. Tabs that need the backend (Outreach, live bids, location) say so.
+`frontend/demo/index.html` is the whole site in one file (`npm run build:demo` rebuilds it, only when the frontend code changes). Double-click it: it plays the clips in `demo/media/` and needs no Node, Python or backend. Tabs that need the backend (Outreach, live bids, location) say so.
 
 **Upload** tab: choose a video and one ad image per country, click the billboard's 4 corners, and the ad is drawn on the billboard live with WebGL; Export records one video per country plus an AI view (MP4 in Chrome/Edge) and can open them in Watch and Compare. Everything stays in the browser. No tracking: the camera must stay still.
 

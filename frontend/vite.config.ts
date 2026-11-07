@@ -5,15 +5,16 @@ import { defineConfig, type Connect, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
-// Rădăcina repo-ului: manifest.json folosește căi relative la ea (ex. "output/melbourne_ro.mp4").
+// Rădăcina repo-ului. Datele (output/, assets/, data/) stau în backend/; manifest.json folosește căi
+// relative la backend/ (ex. "output/melbourne_ro.mp4"), servite sub aceleași URL-uri ca în backend.
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 // Folderele din repo pe care frontend-ul le citește direct, fără să copiem videoclipuri.
-// demo/media/: clipurile publicate pentru echipă (pipeline/publish_media.py); le servim tot de aici, în bucăți de 4 MB.
+// frontend/demo/media/: clipurile publicate pentru echipă (backend/pipeline/publish_media.py); le servim tot de aici, în bucăți de 4 MB.
 const SERVED_DIRS: Record<string, string> = {
-  output: "output",
-  assets: "assets",
-  data: "data",
-  media: "demo/media",
+  output: "backend/output",
+  assets: "backend/assets",
+  data: "backend/data",
+  media: "frontend/demo/media",
 };
 
 const CHUNK_BYTES = 4 * 1024 * 1024;
@@ -105,10 +106,10 @@ function inlineIntoHtml(): Plugin {
 export default defineConfig(({ mode }) =>
   mode === "demo"
     ? {
-        // demo/index.html: tot site-ul într-un fișier, lângă demo/media/ (care nu se șterge la build)
+        // frontend/demo/index.html: tot site-ul într-un fișier, lângă demo/media/ (care nu se șterge la build)
         plugins: [react(), tailwindcss(), inlineIntoHtml()],
         base: "./",
-        build: { outDir: "../demo", emptyOutDir: false, copyPublicDir: false, cssCodeSplit: false, modulePreload: false, assetsInlineLimit: 100_000_000 },
+        build: { outDir: "demo", emptyOutDir: false, copyPublicDir: false, cssCodeSplit: false, modulePreload: false, assetsInlineLimit: 100_000_000 },
       }
     : {
         plugins: [react(), tailwindcss(), serveRepoDirs()],

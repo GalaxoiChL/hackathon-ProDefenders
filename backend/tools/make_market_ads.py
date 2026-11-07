@@ -14,8 +14,8 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
+ROOT = Path(__file__).resolve().parents[1]          # backend/ (data root)
+sys.path.insert(0, str(ROOT.parent))               # repo root, so `import backend` works
 
 from backend.config import DEFAULT_MARKETS  # noqa: E402
 from backend.store import SAMPLE_ADS  # noqa: E402

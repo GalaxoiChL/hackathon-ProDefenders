@@ -99,16 +99,27 @@ def test_root_without_frontend(client):
     assert client.get("/").json()["docs"] == "/docs"
 
 
-def test_frontend_served_when_present(root):
-    write(root / "frontend/index.html", b"<h1>demo</h1>")
-    assert "demo" in make_client(root).get("/").text
+def frontend_client(root: Path, front: Path) -> TestClient:
+    """The frontend lives next to backend/, not inside the data root: point the settings at it."""
+    return TestClient(create_app(Settings(root=root, geo_enabled=False, frontend_root=front)))
 
 
-def test_frontend_dist_preferred_over_vite_source(root):
-    write(root / "frontend/index.html", b'<script type="module" src="/src/main.tsx"></script>')
-    assert make_client(root).get("/").json()["docs"] == "/docs"          # source entry: not served
-    write(root / "frontend/dist/index.html", b"<h1>built</h1>")
-    assert "built" in make_client(root).get("/").text
+def test_frontend_served_when_present(root, tmp_path_factory):
+    front = tmp_path_factory.mktemp("frontend")
+    write(front / "index.html", b"<h1>demo</h1>")
+    assert "demo" in frontend_client(root, front).get("/").text
+
+
+def test_frontend_dist_preferred_over_vite_source(root, tmp_path_factory):
+    front = tmp_path_factory.mktemp("frontend")
+    write(front / "index.html", b'<script type="module" src="/src/main.tsx"></script>')
+    assert frontend_client(root, front).get("/").json()["docs"] == "/docs"          # source entry: not served
+    write(front / "dist/index.html", b"<h1>built</h1>")
+    assert "built" in frontend_client(root, front).get("/").text
+
+
+def test_default_frontend_is_next_to_backend(tmp_path):
+    assert Settings(root=tmp_path / "backend").frontend_dir == tmp_path / "frontend"
 
 
 # ---------- clips / manifest ----------

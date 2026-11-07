@@ -1,12 +1,12 @@
-"""Publish a rendered clip to demo/media/ (videos tracked with Git LFS) so the whole team gets it.
+"""Publish a rendered clip to frontend/demo/media/ (videos tracked with Git LFS) so the whole team gets it.
 
-The demo site (demo/index.html) opens by double-click, with nothing installed, and plays every clip
-listed in demo/media/catalog.js. After `git add demo/media`, commit and push, teammates get the
-new clip with `git pull`.
+The demo site (frontend/demo/index.html) opens by double-click, with nothing installed, and plays every
+clip listed in frontend/demo/media/catalog.js. After `git add frontend/demo/media`, commit and push,
+teammates get the new clip with `git pull`.
 
-    python pipeline/publish_media.py melbourne                 # one clip: output/melbourne_*.mp4 + manifest
-    python pipeline/publish_media.py --all                     # every clip rendered in output/
-    python pipeline/publish_media.py melbourne --with-source   # also the full source clip (large)
+    python backend/pipeline/publish_media.py melbourne                 # one clip: output/melbourne_*.mp4 + manifest
+    python backend/pipeline/publish_media.py --all                     # every clip rendered in backend/output/
+    python backend/pipeline/publish_media.py melbourne --with-source   # also the full source clip (large)
 
 run.py and the backend's render jobs call this automatically at the end of every render.
 The side-by-side compare video is not published (the site builds that view itself): it saves LFS quota.
@@ -20,9 +20,9 @@ import shutil
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent.parent          # backend/
 OUTPUT = ROOT / "output"
-DEMO = ROOT / "demo"
+DEMO = ROOT.parent / "frontend" / "demo"               # the double-click site lives with the frontend
 MEDIA = DEMO / "media"
 REGION_FILE = re.compile(r"^(?P<clip>.+)_(?P<code>[a-z]{2})\.mp4$")
 
@@ -118,7 +118,7 @@ def publish(clip: str, with_source: bool = False) -> Path:
     dest.mkdir(parents=True, exist_ok=True)
     write_json(path, m)
     write_catalog()
-    print(f"published {clip}: {len(regions)} versions, {changed} file(s) updated -> {dest.relative_to(ROOT).as_posix()}/")
+    print(f"published {clip}: {len(regions)} versions, {changed} file(s) updated -> {dest.relative_to(ROOT.parent).as_posix()}/")
     return dest
 
 
@@ -149,7 +149,7 @@ def main() -> None:
         ap.error("give a clip name or --all")
     for clip in rendered_clips() if args.all else [args.clip]:
         publish(clip, args.with_source)
-    print("next: git add demo/media && git commit && git push (videos go through Git LFS)")
+    print("next: git add frontend/demo/media && git commit && git push (videos go through Git LFS)")
 
 
 if __name__ == "__main__":

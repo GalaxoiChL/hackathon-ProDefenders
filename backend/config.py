@@ -1,6 +1,10 @@
-"""Settings read from the environment (and an optional `.env` at the repo root).
+"""Settings read from the environment (and an optional `backend/.env`).
 
-Every value has a demo-safe default, so `uvicorn backend.app:app` works with no configuration.
+Every value has a demo-safe default, so `python backend/start.py` works with no configuration.
+
+Layout: everything the server and the AI pipeline need lives in backend/ (data/, assets/, output/,
+pipeline/), so `root` is the backend/ folder. Paths in manifests ("output/melbourne_ro.mp4") are
+relative to it, and served under the same URLs (/output/..., /assets/..., /data/...).
 """
 from __future__ import annotations
 
@@ -9,7 +13,8 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parent          # backend/: data, assets, output, pipeline
+REPO = ROOT.parent                              # repo root: backend/ + frontend/
 
 # Demo markets: the countries viewers can pick, and that IP geolocation maps everyone onto.
 DEFAULT_MARKETS = ("US", "RO", "JP",
@@ -51,6 +56,8 @@ class Settings:
     manual_hours_per_placement: float = 3.0
     editor_hourly_rate: float = 40.0
     extra: dict = field(default_factory=dict)
+    # the frontend project (frontend/); None = next to backend/ in the repo
+    frontend_root: Path | None = None
 
     def __post_init__(self):
         from . import regions  # noqa: PLC0415  (avoid import cycle at module load)
@@ -80,8 +87,9 @@ class Settings:
     def frontend_dir(self) -> Path:
         """The built frontend (`npm run build` -> frontend/dist). frontend/index.html is the Vite
         source entry, which a browser cannot run without the dev server."""
-        dist = self.root / "frontend" / "dist"
-        return dist if (dist / "index.html").is_file() else self.root / "frontend"
+        front = self.frontend_root or self.root.parent / "frontend"
+        dist = front / "dist"
+        return dist if (dist / "index.html").is_file() else front
 
     @classmethod
     def from_env(cls, root: Path | None = None) -> "Settings":

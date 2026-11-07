@@ -24,7 +24,7 @@ Piața există deja (Mirriad, Amazon Prime Video), dar e enterprise și manuală
 | Problem solving | 25 | oamenii sar peste reclame; o plasare în video nu poate fi sărită; catalog vechi transformat în inventar publicitar nou |
 | AI-driven innovation | 25 | AI în fiecare pas: detecție, înțelegerea scenei, alegere, generare, segmentare |
 | Technical excellence | 25 | pipeline curat, contracte JSON clare între module, fallback-uri |
-| Third-party integrations | 15 | API de imagini (ideal Adobe Firefly), geolocație IP, Ollama |
+| Third-party integrations | 15 | API de imagini (ideal Adobe Firefly), geolocație IP, Ollama, OpenStreetMap (căutare de firme), SMTP |
 | Product experience & demo | 10 | player cu 3 țări sincronizate și butonul „Arată ce vede AI-ul” |
 | Bonus cost vs. valoare | +10 | cost per plasare: cenți; o editare manuală: ore de editor |
 
@@ -40,7 +40,10 @@ clip video
    ├─▶ [2] generate_ad       ─▶ assets/generated/<clip>/<regiune>.png
    │
    ├─▶ [1] insert_ad.py      ─▶ output/<clip>_<regiune>.mp4 + output/<clip>_ai_view.mp4
-   └─▶ [1] manifest          ─▶ output/<clip>.manifest.json  ──▶ [3] frontend demo
+   └─▶ [1] manifest          ─▶ output/<clip>.manifest.json
+                                         │
+                              [B] backend/ (FastAPI) ─▶ /api/... + video-uri ──▶ [3] frontend demo
+                                  geolocație IP, dashboard, joburi pipeline
 ```
 
 AI-ul de analiză rulează **local** (Ollama, YOLO): e rapid, privat și gratuit. Doar generarea imaginilor merge în cloud.
@@ -55,6 +58,7 @@ Scrie-ți numele în coloana **Owner**, lucrează pe branch-ul indicat și desch
 | **2** | **AI de scenă și adaptarea reclamelor** | ✅ analiza scenei, brand safety și alegerea reclamei cu motiv (`analyze_scene.py`, gata). **Rămâne:** adaptarea reclamei la formatul suprafeței cu AI (recompunerea fundalului prin API de imagini), în locul decupării din `adapt_ad.py` | câte un PNG per țară în `assets/generated/<clip>/<regiune>.png`, exact la formatul (`aspect`) suprafeței, fără text tăiat | `ai-ads` | analiză: Alex + Claude; adaptare: _liber_ |
 | **3** | **Frontend demo** | player web cu țările sincronizate, selector de țară sau geolocație IP, buton „Arată ce vede AI-ul”, dashboard pentru advertiser (spații, vizibilitate, venit estimat) | demo-ul complet rulează în browser, citind `manifest.json` | `frontend` | _liber_ |
 | **4** | **Date, conținut și pitch** | `data/ads.json` cu 2–3 branduri reale per țară (RO, US, JP) și reclamele lor reale (imagini salvate în `data/creatives/`), 2–3 clipuri demo (cameră fixă, oameni prin fața panoului), cifre cost/valoare, prezentarea de 3 minute | baza de date completă, clipurile alese, slide-urile și pitch-ul repetat | `content` | _liber_ |
+| **B** | **Server API** | FastAPI în `backend/`: servește manifestele și video-urile (cu seek), 15 piețe demo (US, RO, JP + 12 din Europa), geolocație IP care mapează orice țară din lume pe cea mai apropiată piață, cifrele pentru dashboard, joburi care rulează pipeline-ul și scriu `manifest.json`, fallback-uri pentru demo; **prospectare advertiseri**: AI-ul caută firme locale (OpenStreetMap), le califică și le scrie emailuri în limba lor, cu aprobare umană, iar firmele licitează pe spațiile din video | ✅ v1 gata: `uvicorn backend.app:app`, 58 de teste trec; detalii în `backend/README.md` | `backend` | _liber_ |
 
 Dependențe: **3** poate începe imediat cu videoclipurile existente din `output/`. **2** are nevoie de formatul `ads.json` (de mai jos) pentru textul reclamelor; până e gata baza de date, folosește exemplul din contract. **1** leagă totul la final; până atunci fiecare task rulează singur, pe fișiere.
 
@@ -103,12 +107,22 @@ Toate coordonatele sunt în **pixeli din cadrul original**. Colțurile sunt mere
   "choices": { "RO": { "ad_id": "ro-pizza-hut", "reason": "..." } } }
 ```
 
+Codurile de regiune (`region`, `code`, cheile din `choices`) sunt coduri de țară **ISO 3166-1 alpha-2**. Orice țară din lume poate avea o versiune.
+
 **`output/<clip>.manifest.json`** (task 1 → task 3)
 ```json
 { "clip": "melbourne", "ai_view": "output/melbourne_ai_view.mp4",
   "regions": [ { "code": "RO", "label": "România", "video": "output/melbourne_ro.mp4",
                  "ad_id": "ro-pizza-hut", "reason": "..." } ] }
 ```
+Opțional, `"stats": { "frames": 480, "lost_frames": 12, "fps": 25, "width": 1920, "height": 1080 }`. Îl scrie jobul din backend, iar dashboard-ul îl folosește pentru vizibilitate.
+
+**API backend** (backend → task 3): frontendul citește prin server, nu direct fișierele. Lista completă e în `backend/README.md` și la `/docs`.
+- `GET /api/markets` întoarce cele 15 piețe demo, adică opțiunile din selector. `GET /api/countries` întoarce toate țările lumii.
+- `GET /api/clips/{clip}/play?country=XX` (orice cod ISO) întoarce `{ viewer: {country, name, flag, market, region, match, source}, current: {code, video_url, ad_id, reason}, ad, ai_view_url, regions: [...] }`. `match` arată de ce s-a ales versiunea: `exact`, `language`, `subregion`, `continent` sau `default`.
+- `GET /api/clips/{clip}/stats?views=N` întoarce `{ spaces, visibility, brand_safety, regions: [{code, impressions, revenue_usd}], totals, cost_vs_value, assumptions }`
+- `POST /api/jobs {clip}` pornește pipeline-ul, iar `GET /api/jobs/{id}` arată progresul. La final se scrie `output/<clip>.manifest.json`.
+- Fișierele sunt servite la `/output/...`, `/assets/...` și `/data/...` (căile din manifest + `/` în față).
 
 ## Cum rulezi (o singură comandă)
 
@@ -141,11 +155,19 @@ Clipul de test nu e în git (prea mare). Se descarcă de pe [Pexels](https://www
 | `pipeline/side_by_side.py` | video cu țările una lângă alta, sincronizate |
 | `pipeline/contact_sheet.py` | imagine cu cadre-cheie pentru verificare rapidă |
 
+Serverul API (pornește și fără clipuri randate):
+```bash
+.venv/Scripts/pip install -r backend/requirements.txt
+.venv/Scripts/python -m uvicorn backend.app:app --reload --port 8000   # http://localhost:8000/docs
+.venv/Scripts/python -m pytest -q tests
+```
+
 ## Reguli de lucru
 
 - **Nu lucrăm direct pe `main`.** Branch-ul tău, apoi Pull Request.
 - `git pull` des. Commit-uri mici, cu mesaje clare.
 - **Nu urcăm** videoclipuri, `output/`, greutăți de modele (`*.pt`) sau `.env`; sunt în `.gitignore`.
+- Emailurile către firme pleacă **doar** aprobate de un om și cu `OUTREACH_SEND_ENABLED=true`; în demo, cu `OUTREACH_TEST_RECIPIENT`.
 - **Cheile API** stau doar în `.env` (ex. `IMAGE_API_KEY=...`), niciodată în cod, chat sau commit.
 - Reclame **reale** de branduri, folosite doar demonstrativ (cu mențiunea de neafiliere în prezentare); clipurile video doar cu licență liberă (Pexels).
 

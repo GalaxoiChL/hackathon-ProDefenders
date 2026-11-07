@@ -1,0 +1,460 @@
+"""API tests on a temporary repo layout (no real videos, no network)."""
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+from backend.app import create_app
+from backend.config import Settings
+from backend.geo import GeoResolver
+from backend.jobs import JobRunner
+from backend.models import JobRequest
+from backend import regions
+from backend.regions import region_for_country, resolve
+from backend.stats import polygon_area
+from backend.store import Store
+
+CORNERS = [[1071, 356], [1221, 369], [1223, 565], [1071, 559]]
+
+
+def write(path: Path, data) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if isinstance(data, (dict, list)):
+        path.write_text(json.dumps(data), encoding="utf-8")
+    else:
+        path.write_bytes(data)
+    return path
+
+
+@pytest.fixture
+def root(tmp_path: Path) -> Path:
+    out = tmp_path / "output"
+    for name in ("melbourne_ro.mp4", "melbourne_us.mp4", "melbourne_jp.mp4", "melbourne_ai_view.mp4",
+                 "melbourne_ro.tmp.mp4", "compare.mp4"):
+        write(out / name, b"0123456789" * 10)
+    write(tmp_path / "assets/clips/melbourne.corners.json", {"frame": 0, "corners": CORNERS})
+    return tmp_path
+
+
+def make_client(root: Path, lookup=None) -> TestClient:
+    settings = Settings(root=root, geo_enabled=lookup is not None)
+    async def default_lookup(ip):
+        return None
+    geo = GeoResolver(settings, lookup=lookup or default_lookup)
+    return TestClient(create_app(settings, geo))
+
+
+@pytest.fixture
+def client(root: Path) -> TestClient:
+    return make_client(root)
+
+
+# ---------- pure functions ----------
+def test_countries_data():
+    cs = regions.countries()
+    assert len(cs) >= 249
+    for code, c in cs.items():
+        assert len(code) == 2 and code.isupper()
+        assert c["name"] and c["flag"] and c["continent"] and c["subregion"] and c["cpm_usd"] > 0
+    assert cs["RO"]["name"] == "România" and cs["RO"]["language"] == "ro" and cs["RO"]["flag"] == "🇷🇴"
+    assert cs["DE"]["name"] == "Germania" and cs["DE"]["currency"] == "EUR"
+
+
+def test_resolve_any_country():
+    avail = ["RO", "US", "JP"]
+    assert resolve("us", avail, "RO") == ("US", "exact")
+    assert resolve("MD", avail, "RO") == ("RO", "language")    # ro
+    assert resolve("CA", avail, "RO") == ("US", "language")    # en
+    assert resolve("AU", avail, "RO") == ("US", "language")
+    assert resolve("KR", avail, "RO") == ("JP", "subregion")   # Eastern Asia
+    assert resolve("PL", avail, "RO") == ("RO", "subregion")   # Eastern Europe
+    assert resolve("FR", avail, "RO") == ("RO", "continent")   # Europe
+    assert resolve("BR", avail, "RO") == ("US", "continent")   # Americas
+    assert resolve("IN", avail, "RO") == ("JP", "continent")   # Asia
+    assert resolve("EG", avail, "RO") == ("RO", "default")     # Africa: nothing rendered
+    assert resolve("AT", ["DE", "FR", "US"], "US") == ("DE", "language")
+    assert resolve("BR", ["ES", "PT", "US"], "US") == ("PT", "language")
+    assert resolve("FR", ["JP"], "RO") == ("JP", "default")    # default not rendered
+    assert resolve(None, avail, "RO") == ("RO", "default")
+    assert region_for_country("RO", [], "RO") is None
+
+
+def test_polygon_area():
+    assert polygon_area([[0, 0], [10, 0], [10, 5], [0, 5]]) == 50
+
+
+# ---------- meta ----------
+def test_health(client):
+    r = client.get("/api/health").json()
+    assert r["status"] == "ok"
+    assert r["clips"] == ["melbourne"]
+    assert r["ads_source"] == "sample"
+
+
+def test_root_without_frontend(client):
+    assert client.get("/").json()["docs"] == "/docs"
+
+
+def test_frontend_served_when_present(root):
+    write(root / "frontend/index.html", b"<h1>demo</h1>")
+    assert "demo" in make_client(root).get("/").text
+
+
+# ---------- clips / manifest ----------
+def test_synthesized_manifest(client):
+    m = client.get("/api/clips/melbourne").json()
+    assert m["synthesized"] is True
+    assert sorted(r["code"] for r in m["regions"]) == ["JP", "RO", "US"]
+    ro = next(r for r in m["regions"] if r["code"] == "RO")
+    assert ro["video"] == "output/melbourne_ro.mp4"
+    assert ro["video_url"] == "/output/melbourne_ro.mp4"
+    assert ro["label"] == "România"
+    assert m["ai_view_url"] == "/output/melbourne_ai_view.mp4"
+
+
+def test_manifest_file_wins(root, client):
+    write(root / "output/melbourne.manifest.json", {
+        "clip": "melbourne", "ai_view": "output/melbourne_ai_view.mp4",
+        "regions": [{"code": "RO", "label": "România", "video": "output/melbourne_ro.mp4",
+                     "ad_id": "ro-pizza-bunicii", "reason": "seară ploioasă"}]})
+    m = client.get("/api/clips/melbourne").json()
+    assert "synthesized" not in m and len(m["regions"]) == 1
+    assert m["regions"][0]["reason"] == "seară ploioasă"
+
+
+def test_bad_manifest_is_422(root, client):
+    write(root / "output/melbourne.manifest.json", {"clip": "melbourne", "regions": [{"code": "RO"}]})
+    assert client.get("/api/clips/melbourne").status_code == 422
+
+
+def test_unknown_and_invalid_clip(client):
+    assert client.get("/api/clips/nope").status_code == 404
+    assert client.get("/api/clips/..%2Fsecret").status_code == 404
+
+
+def test_list_clips(client):
+    assert client.get("/api/clips").json() == [
+        {"clip": "melbourne", "regions": ["JP", "RO", "US"], "has_ai_view": True, "synthesized": True}]
+
+
+def test_video_range_request(client):
+    r = client.get("/output/melbourne_ro.mp4", headers={"Range": "bytes=0-9"})
+    assert r.status_code == 206 and r.content == b"0123456789"
+
+
+# ---------- geo / play ----------
+def test_play_query_override(client):
+    r = client.get("/api/clips/melbourne/play?country=jp").json()
+    assert r["current"]["code"] == "JP"
+    assert r["viewer"]["source"] == "query"
+
+
+def test_play_header_and_nearest(client):
+    r = client.get("/api/clips/melbourne/play", headers={"X-Demo-Country": "CA"}).json()
+    assert r["current"]["code"] == "US"
+    assert r["viewer"]["exact_match"] is False
+    assert r["viewer"]["match"] == "language" and r["viewer"]["name"] == "Canada"
+
+
+def test_play_any_country(client):
+    r = client.get("/api/clips/melbourne/play?country=fr").json()
+    assert r["viewer"]["country"] == "FR" and r["viewer"]["flag"] == "🇫🇷"
+    assert r["current"]["code"] == "RO" and r["viewer"]["match"] == "continent"
+    assert client.get("/api/clips/melbourne/play?country=KR").json()["current"]["code"] == "JP"
+
+
+def test_unknown_country_is_400(client):
+    assert client.get("/api/clips/melbourne/play?country=ZZ").status_code == 400
+    assert client.get("/api/geo?country=QQ").status_code == 400
+    assert client.get("/api/countries/QQ").status_code == 400
+
+
+def test_markets(client):
+    ms = client.get("/api/markets").json()
+    codes = [m["code"] for m in ms]
+    assert codes[:3] == ["US", "RO", "JP"] and len(codes) == 15
+    assert {m["continent"] for m in ms[3:]} == {"Europe"}
+    assert all(m["ads"] >= 1 and m["brand"] for m in ms)        # every market has a sample ad
+    assert [m["code"] for m in ms if m["default"]] == ["RO"]
+
+
+def test_geo_maps_any_country_to_a_market(client):
+    cases = {"DE": ("DE", "exact"), "CH": ("DE", "language"), "MD": ("RO", "language"),
+             "IE": ("GB", "language"), "BR": ("PT", "language"), "CA": ("US", "language"),
+             "CZ": ("RO", "subregion"), "CN": ("JP", "subregion"), "NG": ("US", "language"),
+             "EG": ("RO", "default")}
+    for country, (market, match) in cases.items():
+        g = client.get(f"/api/geo?country={country}").json()
+        assert (g["market"], g["market_match"]) == (market, match), country
+
+
+def test_play_reports_market(client):
+    v = client.get("/api/clips/melbourne/play?country=CH").json()["viewer"]
+    assert v["market"] == "DE" and v["region"] == "RO"     # DE not rendered yet: nearest rendered is RO
+
+
+def test_markets_config_validation(tmp_path):
+    with pytest.raises(ValueError):
+        Settings(root=tmp_path, markets=("RO", "ZZ"))
+    with pytest.raises(ValueError):
+        Settings(root=tmp_path, markets=("US", "JP"), default_region="RO")
+
+
+def test_countries_endpoint(client):
+    all_ = client.get("/api/countries").json()
+    assert len(all_) >= 249
+    names = [c["name"] for c in all_]
+    assert names == sorted(names)
+    assert [c["code"] for c in client.get("/api/countries?q=germ").json()] == ["DE"]
+    assert [c["code"] for c in client.get("/api/countries?q=germany").json()] == ["DE"]
+    assert {c["continent"] for c in client.get("/api/countries?continent=Europa").json()} == {"Europe"}
+    assert client.get("/api/countries/jp").json()["name"] == "Japonia"
+
+
+def test_header_with_unknown_country_ignored(client):
+    r = client.get("/api/clips/melbourne/play", headers={"X-Demo-Country": "XX"}).json()
+    assert r["viewer"]["source"] == "default"
+
+
+def test_non_country_files_ignored(root, client):
+    write(root / "output/melbourne_zz.mp4", b"x")      # ZZ is not a country
+    codes = [r["code"] for r in client.get("/api/clips/melbourne").json()["regions"]]
+    assert "ZZ" not in codes
+
+
+def test_play_default_on_localhost(client):
+    r = client.get("/api/clips/melbourne/play").json()
+    assert r["viewer"]["source"] == "default" and r["current"]["code"] == "RO"
+
+
+def test_ip_geolocation(root):
+    calls = []
+    async def lookup(ip):
+        calls.append(ip)
+        return "US"
+    c = make_client(root, lookup)
+    h = {"X-Forwarded-For": "8.8.8.8"}
+    g = c.get("/api/geo", headers=h).json()
+    assert (g["country"], g["source"], g["ip"]) == ("US", "ip", "8.8.8.8")
+    assert g["details"]["name"] == "Statele Unite ale Americii"
+    c.get("/api/geo", headers=h)
+    assert calls == ["8.8.8.8"]                                         # cached
+    assert c.get("/api/geo", headers={"X-Forwarded-For": "10.0.0.1"}).json()["source"] == "default"
+
+
+def test_ip_geolocation_failure_falls_back(root):
+    async def lookup(ip):
+        raise RuntimeError("network down")
+    r = make_client(root, lookup).get("/api/geo", headers={"X-Forwarded-For": "8.8.8.8"}).json()
+    assert r["source"] == "default" and r["country"] == "RO"
+
+
+# ---------- scene / surfaces / ads ----------
+def test_scene_missing_then_present(root, client):
+    assert client.get("/api/clips/melbourne/scene").status_code == 404
+    write(root / "output/melbourne.scene.json", {
+        "clip": "melbourne", "location": "urban street", "brand_safety": {"safe": True, "reasons": []},
+        "choices": {"RO": {"ad_id": "ro-pizza-bunicii", "reason": "stradă aglomerată"}}})
+    assert client.get("/api/clips/melbourne/scene").json()["location"] == "urban street"
+    # synthesized manifest picks up the choice + play returns the ad
+    p = client.get("/api/clips/melbourne/play?country=RO").json()
+    assert p["current"]["ad_id"] == "ro-pizza-bunicii"
+    assert p["ad"]["brand"] == "Pizza Bunicii"
+
+
+def test_surfaces_fallback_to_manual_corners(client):
+    s = client.get("/api/clips/melbourne/surfaces").json()
+    assert s["source"] == "manual" and s["surfaces"][0]["corners"] == CORNERS
+
+
+def test_surfaces_file_wins(root, client):
+    write(root / "output/melbourne.surfaces.json", {"clip": "melbourne", "surfaces": [
+        {"id": "s1", "type": "poster", "frame": 0, "corners": CORNERS, "confidence": 0.9}]})
+    assert client.get("/api/clips/melbourne/surfaces").json()["surfaces"][0]["type"] == "poster"
+
+
+def test_ads_sample_and_file(root, client):
+    r = client.get("/api/ads?region=us").json()
+    assert r["source"] == "sample" and [a["id"] for a in r["ads"]] == ["us-burger-bros"]
+    assert client.get("/api/ads/missing").status_code == 404
+    write(root / "data/ads.json", [{"id": "x", "region": "RO", "brand": "X", "creative": "data/creatives/x.jpg"}])
+    r = client.get("/api/ads").json()
+    assert r["source"] == "data/ads.json + sample"
+    ro = [a for a in r["ads"] if a["region"] == "RO"]
+    assert [a["id"] for a in ro] == ["x"] and ro[0]["creative"] == "data/creatives/x.jpg"   # real ad replaces sample
+    assert any(a["region"] == "DE" for a in r["ads"])                                     # other markets keep theirs
+
+
+# ---------- dashboard ----------
+def test_stats(root, client):
+    write(root / "output/melbourne.manifest.json", {
+        "clip": "melbourne", "regions": [
+            {"code": "RO", "video": "output/melbourne_ro.mp4"},
+            {"code": "US", "video": "output/melbourne_us.mp4"}],
+        "stats": {"frames": 100, "lost_frames": 20, "fps": 25, "width": 1920, "height": 1080}})
+    s = client.get("/api/clips/melbourne/stats?views=1000").json()
+    assert s["visibility"] == {"ratio": 0.8, "visible_seconds": 3.2, "measured": True}
+    assert s["spaces"][0]["frame_share_pct"] > 0
+    ro, us = s["regions"]
+    assert ro["impressions"] == 800 and ro["revenue_usd"] == 3.2     # 800 * $4 CPM
+    assert us["revenue_usd"] == 9.6                                    # 800 * $12 CPM
+    assert s["totals"] == {"placements": 2, "revenue_usd": 12.8}
+    assert s["cost_vs_value"]["savings_x"] == 3000
+
+
+def test_unsafe_scene_earns_nothing(root, client):
+    write(root / "output/melbourne.scene.json", {"clip": "melbourne",
+                                                 "brand_safety": {"safe": False, "reasons": ["accident"]}})
+    s = client.get("/api/clips/melbourne/stats").json()
+    assert s["totals"]["revenue_usd"] == 0 and s["brand_safety"]["safe"] is False
+
+
+# ---------- jobs ----------
+FAKE_ENGINE = '''
+import sys
+from pathlib import Path
+args = sys.argv[1:]
+out = Path(args[args.index("--out") + 1])
+regions = [a.split("=")[0] for i, a in enumerate(args) if i and args[i - 1] == "--ad"]
+for i in range(30, 91, 30):
+    print(f"  {i}/90 frames  (lost so far: 0)", flush=True)
+for name in regions + (["ai_view"] if "--debug" in args else []):
+    (out.parent / f"{out.name}_{name}.mp4").write_bytes(b"x")
+print("frames: 90, billboard lost in 9")
+'''
+
+
+@pytest.fixture
+def job_root(root: Path) -> Path:
+    write(root / "assets/clips/melbourne.mp4", b"x")
+    for code in ("ro", "us", "jp"):
+        write(root / f"assets/ads/{code}_portrait.png", b"png")
+    write(root / "pipeline/insert_ad.py", FAKE_ENGINE.encode())
+    for f in (root / "output").glob("*"):
+        f.unlink()
+    return root
+
+
+def test_job_runs_and_writes_manifest(job_root):
+    settings = Settings(root=job_root, python=sys.executable)
+    runner = JobRunner(settings, Store(settings))
+    job = runner.build(JobRequest(clip="melbourne"))
+    assert job.regions == ["US", "RO", "JP"]          # market order
+    runner.run(job)
+    assert job.status == "done", (job.error, list(job.log))
+    assert job.frames_done == 90
+    m = json.loads((job_root / "output/melbourne.manifest.json").read_text(encoding="utf-8"))
+    assert [r["code"] for r in m["regions"]] == ["US", "RO", "JP"]
+    assert m["regions"][1]["video"] == "output/melbourne_ro.mp4"
+    assert m["ai_view"] == "output/melbourne_ai_view.mp4"
+    assert m["stats"]["frames"] == 90 and m["stats"]["lost_frames"] == 9
+
+
+def test_job_prefers_generated_ads(job_root):
+    write(job_root / "assets/generated/melbourne/ro.png", b"png")
+    settings = Settings(root=job_root)
+    job = JobRunner(settings, Store(settings)).build(JobRequest(clip="melbourne"))
+    assert any("generated" in a and a.startswith("ro=") for a in job.command)
+
+
+def test_job_renders_markets_only(job_root):
+    write(job_root / "assets/ads/fr.png", b"png")
+    write(job_root / "assets/generated/melbourne/de.png", b"png")
+    write(job_root / "assets/generated/melbourne/br.png", b"png")   # country, but not a market: skipped
+    write(job_root / "assets/ads/zz.png", b"png")                   # not a country: ignored
+    settings = Settings(root=job_root, python=sys.executable)
+    runner = JobRunner(settings, Store(settings))
+    job = runner.build(JobRequest(clip="melbourne"))
+    assert job.regions == ["US", "RO", "JP", "DE", "FR"]
+    runner.run(job)
+    assert job.status == "done", job.error
+    m = json.loads((job_root / "output/melbourne.manifest.json").read_text(encoding="utf-8"))
+    fr = next(r for r in m["regions"] if r["code"] == "FR")
+    assert fr["label"] == "Franța" and fr["video"] == "output/melbourne_fr.mp4"
+
+
+def test_job_explicit_ads_any_country(job_root):
+    settings = Settings(root=job_root)
+    job = JobRunner(settings, Store(settings)).build(
+        JobRequest(clip="melbourne", ads={"br": "assets/ads/ro_portrait.png"}))
+    assert job.regions == ["BR"]
+
+
+def test_job_unknown_country_is_400(job_root):
+    c = make_client(job_root)
+    r = c.post("/api/jobs", json={"clip": "melbourne", "ads": {"ZZ": "assets/ads/ro_portrait.png"}})
+    assert r.status_code == 400
+
+
+def test_job_missing_video_is_404(root, client):
+    assert client.post("/api/jobs", json={"clip": "melbourne"}).status_code == 404
+
+
+def test_job_api_end_to_end(job_root):
+    c = make_client(job_root)
+    r = c.post("/api/jobs", json={"clip": "melbourne", "max_frames": 90})
+    assert r.status_code == 202
+    job_id = r.json()["id"]
+    import time
+    for _ in range(100):
+        j = c.get(f"/api/jobs/{job_id}").json()
+        if j["status"] in ("done", "failed"):
+            break
+        time.sleep(0.1)
+    assert j["status"] == "done", j
+    ro = next(r for r in c.get("/api/clips/melbourne").json()["regions"] if r["code"] == "RO")
+    assert ro["video_url"] == "/output/melbourne_ro.mp4"
+
+
+FAKE_RUN_PY = """
+import json, sys
+from pathlib import Path
+args = sys.argv[1:]
+video = Path(args[0]); clip = video.stem
+root = Path(__file__).resolve().parent.parent
+out = root / "output"; out.mkdir(exist_ok=True)
+regions = ["RO", "JP"]
+if "--regions" in args:
+    regions = []
+    for a in args[args.index("--regions") + 1:]:
+        if a.startswith("--"):
+            break
+        regions.append(a)
+print("  30/60 frames  (lost so far: 0)", flush=True)
+for r in regions:
+    (out / f"{clip}_{r.lower()}.mp4").write_bytes(b"x")
+(out / f"{clip}_ai_view.mp4").write_bytes(b"x")
+print("frames: 60, billboard lost in 6", flush=True)
+manifest = {"clip": clip, "source": f"assets/clips/{clip}.mp4", "ai_view": f"output/{clip}_ai_view.mp4",
+            "compare": None, "surface": {"id": "s1"},
+            "regions": [{"code": r, "label": r, "video": f"output/{clip}_{r.lower()}.mp4",
+                         "ad_id": f"{r.lower()}-brand", "brand": "Brand", "reason": "AI"} for r in regions]}
+(out / f"{clip}.manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+"""
+
+
+def test_job_uses_run_py_when_present(job_root):
+    write(job_root / "pipeline/run.py", FAKE_RUN_PY.encode())
+    settings = Settings(root=job_root, python=sys.executable)
+    runner = JobRunner(settings, Store(settings))
+    job = runner.build(JobRequest(clip="melbourne", regions=["ro", "de"], max_frames=60))
+    assert job.mode == "run" and "--regions" in job.command and "RO" in job.command
+    runner.run(job)
+    assert job.status == "done", (job.error, list(job.log))
+    assert job.regions == ["RO", "DE"] and job.frames_done == 30
+    m = json.loads((job_root / "output/melbourne.manifest.json").read_text(encoding="utf-8"))
+    assert m["surface"] == {"id": "s1"} and m["regions"][0]["brand"] == "Brand"      # run.py's fields kept
+    assert m["stats"]["frames"] == 60 and m["stats"]["lost_frames"] == 6             # stats added
+    # explicit ads / corners still go straight to insert_ad.py
+    legacy = runner.build(JobRequest(clip="melbourne", ads={"RO": "assets/ads/ro_portrait.png"}))
+    assert legacy.mode == "insert"
+
+
+def test_job_run_py_bad_region(job_root):
+    write(job_root / "pipeline/run.py", FAKE_RUN_PY.encode())
+    r = make_client(job_root).post("/api/jobs", json={"clip": "melbourne", "regions": ["ZZ"]})
+    assert r.status_code == 400

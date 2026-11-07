@@ -16,3 +16,6 @@ data/creatives/
 
 # model weights downloaded at runtime
 *.pt
+
+# test cache
+.pytest_cache/

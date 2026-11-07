@@ -176,11 +176,6 @@ export default function HowItWorksTab() {
           ))}
         </ol>
       </section>
-
-      <p className="mt-10 text-xs text-muted">
-        Optional: Brave Search API (extra web results for outreach) and the Gemini image API (cloud alternative to Stable
-        Diffusion). Demo footage from Pexels (free licence); brand ads shown for demonstration only, with no affiliation.
-      </p>
     </div>
   );
 }

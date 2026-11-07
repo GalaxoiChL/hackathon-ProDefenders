@@ -137,24 +137,24 @@
   "regions": [
     {
       "code": "RO",
-      "label": "România",
+      "label": "Romania",
       "video": "media/melbourne/ro.mp4",
       "ad_id": "ro-pizza-hut",
       "brand": "Pizza Hut",
       "creative": "media/melbourne/ro_creative.png",
       "creative_method": "ai-expand",
-      "reason": "Consider că Pizza Hut ar fi cea mai potrivită variantă. Scena este într-o intersecție aglomerată din Melbourne, la prânz, cu vreme înnorată – perfect pentru un public urban, probabil studenți sau grupuri de prieteni care caută o masă rapidă. Mesajul despre Pizza Bar Nelimitat, oferit între 12:00 și 15:00, se potrivește perfect cu momentul și locația scenei.",
+      "reason": "Pizza Hut is the best fit. The scene is a busy Melbourne intersection at lunchtime under an overcast sky, a natural match for an urban crowd, likely students or groups of friends looking for a quick meal. The all-you-can-eat Pizza Bar offer, available from 12:00 to 15:00, matches both the moment and the location.",
       "fit_score": 90
     },
     {
       "code": "JP",
-      "label": "Japonia",
+      "label": "Japan",
       "video": "media/melbourne/jp.mp4",
       "ad_id": "jp-mcdonalds",
       "brand": "McDonald's",
       "creative": "media/melbourne/jp_creative.png",
       "creative_method": "smart-crop",
-      "reason": "Având în vedere că scena este într-o zonă urbană, Melbourne, la prânz, cu vreme înnorată, un McDonald's fries ar fi o opțiune excelentă pentru o gustare rapidă. Publicul țintă, o combinație de turiști și localnici, ar fi interesat de o ofertă de mâncare, iar mesajul publicitar specific (fripturi mari) se potrivește perfect cu atmosfera urbană și timpul de zi.",
+      "reason": "The scene is a busy city street in Melbourne at lunchtime on an overcast day, so McDonald's fries make an ideal quick snack. The audience, a mix of tourists and locals, is open to a food offer, and the ad's message (large fries) suits the urban atmosphere and the time of day.",
       "fit_score": 85
     }
   ],

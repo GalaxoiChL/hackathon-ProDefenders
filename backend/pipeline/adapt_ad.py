@@ -67,10 +67,29 @@ def smart_cover(img: np.ndarray, cw: int, ch: int, max_stretch: float = 1.15) ->
     return cv2.resize(img, (cw, ch), interpolation=cv2.INTER_AREA)
 
 
-def fit_to_aspect(img: np.ndarray, aspect: float, long_side: int = 1200, fill: str = "cover") -> np.ndarray:
+def cover_crop_share(img: np.ndarray, aspect: float, max_stretch: float = 1.15) -> float:
+    """Share of the ad that smart_cover would cut off (after its mild stretch), 0..1."""
+    h, w = img.shape[:2]
+    gap = max(w / h, aspect) / min(w / h, aspect)
+    return max(0.0, 1 - min(max_stretch, gap) / gap)
+
+
+def edge_is_flat(img: np.ndarray, tol: float = 12.0) -> bool:
+    """True when the ad's border is (almost) one color: padding with it is then invisible."""
+    b = max(2, min(img.shape[:2]) // 50)
+    edge = np.concatenate([img[:b].reshape(-1, 3), img[-b:].reshape(-1, 3),
+                           img[:, :b].reshape(-1, 3), img[:, -b:].reshape(-1, 3)]).astype(np.float32)
+    return float(edge.std(axis=0).mean()) < tol
+
+
+def fit_to_aspect(img: np.ndarray, aspect: float, long_side: int = 1200, fill: str = "cover",
+                  max_crop: float = 0.2) -> np.ndarray:
     """Return a canvas with width/height == aspect.
 
-    fill="cover": the ad fills the whole surface (smart crop + mild stretch) - default
+    fill="cover": the ad fills the whole surface (smart crop + mild stretch) - default. Only while
+                  that cuts off at most `max_crop` of the ad: a wide ad on a tall poster lost its
+                  brand name and price ("GELATO NONNA ROSA" -> "GELATO NO"), so beyond that the
+                  whole ad is shown, padded with its edge color (flat border) or a blur of itself
     fill="blur":  the whole ad, centered, with a blurred version of itself around it
     fill="color": the whole ad, centered, with its edge color around it
     """
@@ -79,7 +98,9 @@ def fit_to_aspect(img: np.ndarray, aspect: float, long_side: int = 1200, fill: s
     else:
         cw, ch = max(1, round(long_side * aspect)), long_side
     if fill == "cover":
-        return smart_cover(img, cw, ch)
+        if cover_crop_share(img, aspect) <= max_crop:
+            return smart_cover(img, cw, ch)
+        fill = "color" if edge_is_flat(img) else "blur"
     if fill == "blur":
         canvas = blurred_fill(img, cw, ch)
     else:

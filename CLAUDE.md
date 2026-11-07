@@ -33,40 +33,36 @@ Piața există deja (Mirriad, Amazon Prime Video), dar e enterprise și manuală
 ```
 clip video
    │
-   ├─▶ [A] detect_surfaces   ─▶ <clip>.surfaces.json   (unde sunt panourile)
-   ├─▶ [B] analyze_scene     ─▶ <clip>.scene.json      (context + brand safety)
+   ├─▶ [1] detect_surfaces   ─▶ <clip>.surfaces.json   (unde sunt panourile)
+   ├─▶ [2] analyze_scene     ─▶ <clip>.scene.json      (context + brand safety)
    │
-   ├─▶ [B] choose_ads        ─▶ alegere din data/ads.json, per țară, cu motiv
-   ├─▶ [C] generate_ad       ─▶ assets/generated/<clip>/<regiune>.png
+   ├─▶ [2] choose_ads        ─▶ alegere din data/ads.json [4], per țară, cu motiv
+   ├─▶ [2] generate_ad       ─▶ assets/generated/<clip>/<regiune>.png
    │
-   ├─▶ [motor] insert_ad.py  ─▶ output/<clip>_<regiune>.mp4 + output/<clip>_ai_view.mp4
-   └─▶ [F] manifest          ─▶ output/<clip>.manifest.json  ──▶ [E] frontend demo
+   ├─▶ [1] insert_ad.py      ─▶ output/<clip>_<regiune>.mp4 + output/<clip>_ai_view.mp4
+   └─▶ [1] manifest          ─▶ output/<clip>.manifest.json  ──▶ [3] frontend demo
 ```
 
 AI-ul de analiză rulează **local** (Ollama, YOLO): e rapid, privat și gratuit. Doar generarea imaginilor merge în cloud.
 
-## Împărțirea muncii: alege-ți o parte
+## Împărțirea muncii: 4 task-uri, unul pentru fiecare
 
 Scrie-ți numele în coloana **Owner**, lucrează pe branch-ul indicat și deschide un Pull Request spre `main` când ai ceva funcțional.
 
-| # | Parte | Ce înseamnă „gata” | Branch | Owner | Status |
+| # | Task | Ce include | Ce înseamnă „gata” | Branch | Owner |
 |---|---|---|---|---|---|
-| **Motor** | Inserare video (urmărire, oameni în față, versiuni pe țări) | ✅ merge pe clipul din Melbourne | `video-pipeline` | Alex + Claude | ✅ gata (v1) |
-| **A** | Detectare automată spații publicitare (AI) | dai un clip și primești `surfaces.json` cu 4 colțuri per panou, fără click manual | `ai-detect` | Alex + Claude | 🟡 în lucru |
-| **B** | Analiza scenei, brand safety și alegerea reclamei (Ollama `gemma3:4b`) | `scene.json` + pentru fiecare țară reclama aleasă și motivul („plouă, seară: cafea caldă”) | `ai-scene` | _liber_ | ⬜ |
-| **C** | Generare reclame: API de imagini + text din baza de date | un PNG la formatul panoului, cu vizual generat și text exact puse de cod | `ad-generator` | _liber_ | ⬜ |
-| **D** | Baza de date de reclame | `data/ads.json` cu 2–3 branduri inventate per țară (RO, US, JP), poze de produs, culori | `ads-db` | _liber_ | ⬜ |
-| **E** | Frontend demo | player web cu țări sincronizate, selector de țară sau geolocație, buton „ce vede AI-ul”, dashboard advertiser | `frontend` | _liber_ | ⬜ |
-| **F** | Orchestrare / backend | un singur script sau endpoint: clip → A → B → C → motor → `manifest.json` | `backend` | _liber_ | ⬜ |
-| **G** | Pitch, clipuri demo, cifre cost/valoare | prezentare de 3 minute, 2–3 clipuri bune (cameră fixă, oameni prin fața panoului), calcule | `pitch` | _liber_ | ⬜ |
+| **1** | **Pipeline video AI** | motorul de inserare (✅ v1 gata), detectarea automată a panourilor cu AI, scriptul care leagă toți pașii și scrie `manifest.json` | dai un clip și primești automat videoclipurile pe țări + „AI view” + `manifest.json`, fără click manual | `video-pipeline` | Alex + Claude |
+| **2** | **AI de scenă și generare reclame** | analiza scenei și brand safety cu Ollama `gemma3:4b`, alegerea reclamei per țară cu motiv, generarea vizualului prin API de imagini + textul pus de cod din `ads.json` | `scene.json` cu alegerile și motivele, plus câte un PNG per țară la formatul panoului | `ai-ads` | _liber_ |
+| **3** | **Frontend demo** | player web cu țările sincronizate, selector de țară sau geolocație IP, buton „Arată ce vede AI-ul”, dashboard pentru advertiser (spații, vizibilitate, venit estimat) | demo-ul complet rulează în browser, citind `manifest.json` | `frontend` | _liber_ |
+| **4** | **Date, conținut și pitch** | `data/ads.json` cu 2–3 branduri inventate per țară (RO, US, JP) + poze de produs, 2–3 clipuri demo (cameră fixă, oameni prin fața panoului), cifre cost/valoare, prezentarea de 3 minute | baza de date completă, clipurile alese, slide-urile și pitch-ul repetat | `content` | _liber_ |
 
-Dependențe: **E** poate începe imediat cu videoclipurile existente din `output/`. **C** are nevoie de formatul din **D**. **F** leagă totul la final; până atunci fiecare parte rulează singură, pe fișiere.
+Dependențe: **3** poate începe imediat cu videoclipurile existente din `output/`. **2** are nevoie de formatul `ads.json` (de mai jos) pentru textul reclamelor; până e gata baza de date, folosește exemplul din contract. **1** leagă totul la final; până atunci fiecare task rulează singur, pe fișiere.
 
 ## Contracte între module (respectați formatul ca piesele să se lege)
 
 Toate coordonatele sunt în **pixeli din cadrul original**. Colțurile sunt mereu în ordinea **stânga-sus, dreapta-sus, dreapta-jos, stânga-jos**.
 
-**`data/ads.json`** (D → B, C)
+**`data/ads.json`** (task 4 → task 2)
 ```json
 [
   {
@@ -84,7 +80,7 @@ Toate coordonatele sunt în **pixeli din cadrul original**. Colțurile sunt mere
 ]
 ```
 
-**`<clip>.surfaces.json`** (A → motor)
+**`<clip>.surfaces.json`** (task 1, intern: detecție → motor)
 ```json
 { "clip": "melbourne", "surfaces": [
   { "id": "s1", "type": "billboard", "frame": 0, "corners": [[1071,356],[1221,369],[1223,565],[1071,559]],
@@ -92,14 +88,14 @@ Toate coordonatele sunt în **pixeli din cadrul original**. Colțurile sunt mere
 ] }
 ```
 
-**`<clip>.scene.json`** (B → C, F)
+**`<clip>.scene.json`** (task 2 → task 1)
 ```json
 { "clip": "melbourne", "location": "urban street", "time_of_day": "day", "weather": "overcast",
   "mood": "busy", "brand_safety": { "safe": true, "reasons": [] },
   "choices": { "RO": { "ad_id": "ro-pizza-bunicii", "reason": "..." } } }
 ```
 
-**`output/<clip>.manifest.json`** (F → E)
+**`output/<clip>.manifest.json`** (task 1 → task 3)
 ```json
 { "clip": "melbourne", "ai_view": "output/melbourne_ai_view.mp4",
   "regions": [ { "code": "RO", "label": "România", "video": "output/melbourne_ro.mp4",
@@ -124,7 +120,7 @@ Clipul de test nu e în git (prea mare). Se descarcă de pe [Pexels](https://www
 | Script | Rol |
 |---|---|
 | `pipeline/insert_ad.py` | motorul: urmărire (optical flow + omografie), pierdere și regăsire (SIFT), oameni în față (YOLO-seg), export pe țări + „AI view” |
-| `pipeline/pick_corners.py` | marcare manuală a colțurilor (fallback până e gata **A**) |
+| `pipeline/pick_corners.py` | marcare manuală a colțurilor (fallback până e gata detectarea automată) |
 | `pipeline/make_test_ads.py` | reclame placeholder RO/US/JP |
 | `pipeline/side_by_side.py` | video cu țările una lângă alta, sincronizate |
 | `pipeline/contact_sheet.py` | imagine cu cadre-cheie pentru verificare rapidă |

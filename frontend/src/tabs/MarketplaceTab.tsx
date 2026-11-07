@@ -4,7 +4,8 @@ import { useMarket } from "../market";
 import { reservePrice } from "../data/auction";
 import { regionStyle } from "../regions";
 import type { Slot } from "../data/types";
-import { Button, CountryMark, CountUp, PageHeader, Segmented, compact, dec, eur, num, useNow } from "../components/ui";
+import { Button, CountryMark, CountUp, PageHeader, compact, dec, eur, num, useNow } from "../components/ui";
+import { CountryPicker, Dropdown } from "../components/CountryPicker";
 
 type StatusFilter = "all" | "open" | "closed";
 
@@ -37,25 +38,33 @@ export default function MarketplaceTab() {
         }
       />
 
-      <div className="mb-6 flex flex-wrap items-center gap-3">
-        <Segmented
-          id="mk-country"
-          label="Country"
-          value={country}
-          onChange={setCountry}
-          options={[{ value: "all", label: "All markets" }, ...countries.map((c) => ({ value: c, label: regionStyle(c).name }))]}
-        />
-        <Segmented
-          id="mk-status"
-          label="Status"
-          value={status}
-          onChange={setStatus}
-          options={[
-            { value: "all", label: "All" },
-            { value: "open", label: "Open" },
-            { value: "closed", label: "Closed" },
-          ]}
-        />
+      <div className="mb-6 flex flex-wrap items-end gap-4">
+        <div className="text-sm">
+          <span className="mb-1.5 block text-xs uppercase tracking-[0.14em] text-muted">Market</span>
+          <CountryPicker
+            allLabel="All markets"
+            value={country}
+            onChange={setCountry}
+            options={countries.map((c) => {
+              const n = slots.filter((s) => s.region === c).length;
+              return { code: c, detail: `${n} placement${n === 1 ? "" : "s"}` };
+            })}
+          />
+        </div>
+        <div className="text-sm">
+          <span className="mb-1.5 block text-xs uppercase tracking-[0.14em] text-muted">Status</span>
+          <Dropdown
+            label="Status"
+            className="min-w-44"
+            value={status}
+            onChange={(v) => setStatus(v as StatusFilter)}
+            options={[
+              { value: "all", label: "All auctions" },
+              { value: "open", label: "Open", color: "var(--positive)", detail: "Still taking bids" },
+              { value: "closed", label: "Closed", color: "var(--ink)", detail: "Sold or unsold" },
+            ]}
+          />
+        </div>
       </div>
 
       <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_380px]">

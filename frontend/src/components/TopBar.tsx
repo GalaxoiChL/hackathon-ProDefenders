@@ -10,12 +10,14 @@ export function TopBar({ tabs }: { tabs: TabDef[] }) {
           <span className="font-serif text-xl font-semibold tracking-tight">ProDefenders</span>
           <span className="hidden text-xs text-muted md:inline">In-content advertising, localised</span>
         </NavLink>
-        <nav className="no-scrollbar -mb-px flex gap-7 overflow-x-auto">
+        <nav className="no-scrollbar -mb-px flex min-w-0 flex-1 gap-7 overflow-x-auto">
           {tabs.map((t) => (
             <NavLink
               key={t.id}
               to={`/${t.id}`}
-              className={({ isActive }) => `relative shrink-0 py-4 text-sm transition-colors ${isActive ? "text-ink" : "text-muted hover:text-ink"}`}
+              className={({ isActive }) =>
+                `relative shrink-0 py-4 text-sm transition-colors ${t.align === "end" ? "ml-auto font-medium" : ""} ${isActive ? "text-ink" : "text-muted hover:text-ink"}`
+              }
             >
               {({ isActive }) => (
                 <>

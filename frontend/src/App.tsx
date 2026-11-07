@@ -51,12 +51,12 @@ function Shell() {
           </AnimatePresence>
         )}
       </main>
-      <Footer />
+      <Footer tabCount={tabs.length} />
     </div>
   );
 }
 
-function Footer() {
+function Footer({ tabCount }: { tabCount: number }) {
   const { data } = useApp();
   return (
     <footer className="border-t border-rule">
@@ -70,7 +70,7 @@ function Footer() {
               ? "Videos and data from output/ (API not running)"
               : "Sample data: no rendered clip found"}
         </span>
-        <span className="ml-auto hidden sm:inline">Keys 1–4 switch tabs</span>
+        <span className="ml-auto hidden sm:inline">Keys 1–{tabCount} switch tabs</span>
       </div>
     </footer>
   );

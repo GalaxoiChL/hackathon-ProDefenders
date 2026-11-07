@@ -1,133 +1,186 @@
-// "How it works": the pipeline in six steps, then every service and model it relies on ("Powered by").
-// The list mirrors the code: change it here when an integration is added or removed.
-import { ArrowUpRight } from "lucide-react";
-import { PageHeader, Section } from "../components/ui";
+// "How it works": the integrations first, big and scannable ("Powered by"); details only on click.
+// Then the pipeline as one line of six steps. The list mirrors the code: update it when an
+// integration is added or removed.
+import { useState, type ComponentType } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { ArrowRight, ArrowUpRight, Brain, Crosshair, Film, Globe, Mail, MapPin, Scissors, Search, Sparkles, Users } from "lucide-react";
+import { PageHeader } from "../components/ui";
 
-type Kind = "api" | "local" | "engine";
+type Kind = "local" | "api" | "engine";
 
 interface Integration {
+  id: string;
   name: string;
+  short: string; // 2-3 words, shown on the card
   by: string;
-  role: string;
-  step: string;
+  role: string; // full sentence, shown on click
   kind: Kind;
+  icon: ComponentType<{ size?: number; strokeWidth?: number }>;
   url: string;
-  optional?: boolean;
 }
 
-const STEPS = [
-  { n: 1, title: "Find the ad space", text: "AI scans the footage and finds every billboard, poster, screen and bus ad, with its exact outline.", models: "OWLv2 · SAM 2" },
-  { n: 2, title: "Understand the scene", text: "A vision model reads the place, time, weather and mood, and checks the scene is brand-safe.", models: "Gemma 3" },
-  { n: 3, title: "Pick the ad", text: "For every country it chooses the real ad that fits the moment best, and says why.", models: "Gemma 3" },
-  { n: 4, title: "Fit the creative", text: "The whole ad is kept; AI extends its background to the billboard's shape, then checks its own work.", models: "Stable Diffusion · Gemma 3" },
-  { n: 5, title: "Place it in the video", text: "The ad follows the billboard as the camera moves, and people or buses stay in front of it.", models: "OpenCV · YOLO11" },
-  { n: 6, title: "Serve by country", text: "Each viewer gets the version for their country, detected from their connection.", models: "ip-api.com" },
-];
-
 const INTEGRATIONS: Integration[] = [
-  // external services, called over the internet
-  { name: "ip-api.com", by: "IP geolocation API", role: "Detects the viewer's country from their IP, so each viewer gets the local version of the scene.", step: "Serve by country", kind: "api", url: "https://ip-api.com" },
-  { name: "OpenStreetMap Nominatim", by: "OpenStreetMap Foundation", role: "Finds local businesses near each placement, the advertisers our outreach contacts.", step: "Advertiser outreach", kind: "api", url: "https://nominatim.openstreetmap.org" },
-  { name: "SMTP email", by: "e.g. Gmail", role: "Sends the outreach emails, only after a person approves each one.", step: "Advertiser outreach", kind: "api", url: "https://support.google.com/mail/answer/7126229" },
-  { name: "Brave Search API", by: "Brave", role: "Extra web results about a lead (website, contact page) when OpenStreetMap is not enough.", step: "Advertiser outreach", kind: "api", url: "https://brave.com/search/api/", optional: true },
-  { name: "Gemini image API", by: "Google", role: "Cloud alternative to Stable Diffusion for extending an ad's background.", step: "Fit the creative", kind: "api", url: "https://ai.google.dev", optional: true },
-  // AI models, all running on the laptop's GPU/CPU
-  { name: "Gemma 3 (4B) via Ollama", by: "Google · Ollama", role: "Understands the scene, checks brand safety, picks the ad and explains why, describes ad backgrounds and catches fake text in generated images. Also drafts outreach emails.", step: "Steps 2-4, outreach", kind: "local", url: "https://ollama.com/library/gemma3" },
-  { name: "OWLv2", by: "Google · Hugging Face", role: "Open-vocabulary detector: finds billboards, posters, screens and bus ads from a text description, no training needed.", step: "Find the ad space", kind: "local", url: "https://huggingface.co/google/owlv2-base-patch16-ensemble" },
-  { name: "SAM 2", by: "Meta · Ultralytics", role: "Cuts out the exact outline of each detected surface, so the new ad sits on its corners.", step: "Find the ad space", kind: "local", url: "https://docs.ultralytics.com/models/sam-2/" },
-  { name: "YOLO11 segmentation", by: "Ultralytics", role: "Finds people and vehicles in front of the billboard, so they stay in front of the new ad.", step: "Place it in the video", kind: "local", url: "https://docs.ultralytics.com/models/yolo11/" },
-  { name: "Stable Diffusion 1.5 Inpainting", by: "Hugging Face Diffusers", role: "Generative expand: paints the missing background around the real ad to fit the billboard's shape.", step: "Fit the creative", kind: "local", url: "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting" },
-  // video engine
-  { name: "OpenCV", by: "Open source", role: "Tracks the billboard frame by frame (optical flow, homography, SIFT) and composites the ad with matching light and grain.", step: "Place it in the video", kind: "engine", url: "https://opencv.org" },
-  { name: "FFmpeg", by: "Open source", role: "Encodes the final videos for the web and keeps the original sound.", step: "Place it in the video", kind: "engine", url: "https://ffmpeg.org" },
+  { id: "gemma", name: "Gemma 3", short: "Understands the scene", by: "Google · runs in Ollama", kind: "local", icon: Brain,
+    role: "Reads the place, time, weather and mood of the scene, checks it is brand-safe, picks the best ad for each country and explains why. It also describes ad backgrounds, catches fake text in generated images and drafts outreach emails.",
+    url: "https://ollama.com/library/gemma3" },
+  { id: "sd", name: "Stable Diffusion", short: "Extends the ad", by: "Inpainting · Hugging Face Diffusers", kind: "local", icon: Sparkles,
+    role: "Generative expand: keeps the whole real ad and paints the missing background around it, so it fits the billboard's shape without cropping or stretching.",
+    url: "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-inpainting" },
+  { id: "owl", name: "OWLv2", short: "Finds billboards", by: "Google · Hugging Face", kind: "local", icon: Search,
+    role: "Open-vocabulary detector: finds billboards, posters, screens and bus ads from a plain-text description, with no training.",
+    url: "https://huggingface.co/google/owlv2-base-patch16-ensemble" },
+  { id: "sam", name: "SAM 2", short: "Cuts the exact shape", by: "Meta · Ultralytics", kind: "local", icon: Scissors,
+    role: "Cuts out the exact outline of each detected surface, so the new ad lands precisely on its four corners.",
+    url: "https://docs.ultralytics.com/models/sam-2/" },
+  { id: "yolo", name: "YOLO11", short: "Keeps people in front", by: "Ultralytics", kind: "local", icon: Users,
+    role: "Segments people and vehicles passing in front of the billboard, so they stay in front of the new ad.",
+    url: "https://docs.ultralytics.com/models/yolo11/" },
+  { id: "ipapi", name: "ip-api", short: "Detects the country", by: "IP geolocation API", kind: "api", icon: Globe,
+    role: "Detects the viewer's country from their connection, so each viewer gets the version of the scene made for their market.",
+    url: "https://ip-api.com" },
+  { id: "osm", name: "OpenStreetMap", short: "Finds advertisers", by: "Nominatim API", kind: "api", icon: MapPin,
+    role: "Finds local businesses near each placement: the advertisers our outreach contacts.",
+    url: "https://nominatim.openstreetmap.org" },
+  { id: "smtp", name: "Email (SMTP)", short: "Contacts advertisers", by: "e.g. Gmail", kind: "api", icon: Mail,
+    role: "Sends the outreach emails written by Gemma, only after a person approves each one.",
+    url: "https://support.google.com/mail/answer/7126229" },
+  { id: "opencv", name: "OpenCV", short: "Tracks the billboard", by: "Open source", kind: "engine", icon: Crosshair,
+    role: "Follows the billboard frame by frame as the camera moves (optical flow, homography, SIFT) and blends the ad in with matching light and grain.",
+    url: "https://opencv.org" },
+  { id: "ffmpeg", name: "FFmpeg", short: "Renders the video", by: "Open source", kind: "engine", icon: Film,
+    role: "Encodes the final videos for the web and keeps the original sound.",
+    url: "https://ffmpeg.org" },
 ];
 
-const GROUPS: { kind: Kind; title: string; note: string }[] = [
-  { kind: "api", title: "External services", note: "Called over the internet" },
-  { kind: "local", title: "AI models", note: "Run on the laptop: private, no per-use cost, work offline" },
-  { kind: "engine", title: "Video engine", note: "Open-source libraries" },
+const KIND_LABEL: Record<Kind, string> = { local: "Local AI", api: "External API", engine: "Video engine" };
+const KIND_STYLE: Record<Kind, string> = {
+  local: "bg-ink text-paper",
+  api: "bg-accent text-paper",
+  engine: "border border-rule-strong text-ink",
+};
+
+const STEPS: { title: string; uses: string[] }[] = [
+  { title: "Find the billboard", uses: ["owl", "sam"] },
+  { title: "Read the scene", uses: ["gemma"] },
+  { title: "Pick the ad", uses: ["gemma"] },
+  { title: "Fit the ad", uses: ["sd", "gemma"] },
+  { title: "Place in video", uses: ["opencv", "yolo", "ffmpeg"] },
+  { title: "Serve by country", uses: ["ipapi"] },
 ];
 
-function IntegrationCard({ it }: { it: Integration }) {
+const byId = (id: string) => INTEGRATIONS.find((i) => i.id === id)!;
+
+function Tile({ it, active, onClick }: { it: Integration; active: boolean; onClick: () => void }) {
+  const Icon = it.icon;
   return (
-    <a
-      href={it.url}
-      target="_blank"
-      rel="noreferrer"
-      className="group flex flex-col border border-rule bg-card p-5 transition-colors hover:border-ink"
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      className={`group flex flex-col items-start border bg-card p-5 text-left transition-colors ${
+        active ? "border-ink" : "border-rule hover:border-rule-strong"
+      }`}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <p className="font-medium text-ink">{it.name}</p>
-          <p className="mt-0.5 text-xs text-muted">{it.by}</p>
-        </div>
-        <ArrowUpRight size={16} className="shrink-0 text-muted transition-colors group-hover:text-ink" />
-      </div>
-      <p className="mt-3 flex-1 text-sm leading-relaxed text-ink-2">{it.role}</p>
-      <p className="mt-4 flex flex-wrap items-center gap-2 text-xs text-muted">
-        <span className="border border-rule px-1.5 py-0.5">{it.step}</span>
-        {it.optional && <span className="border border-rule px-1.5 py-0.5">optional</span>}
-      </p>
-    </a>
+      <span className={`flex size-11 items-center justify-center ${KIND_STYLE[it.kind]}`}>
+        <Icon size={22} strokeWidth={1.75} />
+      </span>
+      <span className="mt-4 break-words font-serif text-lg font-medium leading-tight tracking-tight [overflow-wrap:anywhere] sm:text-2xl">
+        {it.name}
+      </span>
+      <span className="mt-1 text-sm text-ink-2">{it.short}</span>
+    </button>
   );
 }
 
 export default function HowItWorksTab() {
-  const counts = {
-    api: INTEGRATIONS.filter((i) => i.kind === "api").length,
-    local: INTEGRATIONS.filter((i) => i.kind === "local").length,
-  };
+  const [selected, setSelected] = useState("gemma");
+  const sel = byId(selected);
+  const local = INTEGRATIONS.filter((i) => i.kind === "local").length;
+  const apis = INTEGRATIONS.filter((i) => i.kind === "api").length;
+
   return (
     <div>
       <PageHeader
         eyebrow="Under the hood"
-        title="How it works"
-        lede="From raw footage to a local brand on the billboard in every market. Five AI models do the work, all running on our own laptop, connected to a handful of external services."
-        aside={
-          <div className="flex gap-10 text-sm">
-            <div>
-              <p className="text-xs uppercase tracking-[0.14em] text-muted">AI models</p>
-              <p className="mt-1 font-serif text-3xl">{counts.local}</p>
-            </div>
-            <div>
-              <p className="text-xs uppercase tracking-[0.14em] text-muted">External services</p>
-              <p className="mt-1 font-serif text-3xl">{counts.api}</p>
-            </div>
-          </div>
-        }
+        title="Powered by"
+        lede={`${local} AI models running on our own laptop, ${apis} external services. Click any of them to see what it does.`}
       />
 
-      <Section title="The pipeline">
-        <ol className="grid gap-px border border-rule bg-rule sm:grid-cols-2 lg:grid-cols-3">
-          {STEPS.map((s) => (
-            <li key={s.n} className="bg-card p-5">
-              <p className="font-serif text-3xl text-accent">{s.n}</p>
-              <p className="mt-2 font-medium">{s.title}</p>
-              <p className="mt-1.5 text-sm leading-relaxed text-ink-2">{s.text}</p>
-              <p className="mt-3 text-xs uppercase tracking-[0.12em] text-muted">{s.models}</p>
+      {/* legend */}
+      <div className="-mt-4 mb-5 flex flex-wrap gap-5 text-xs text-muted">
+        {(Object.keys(KIND_LABEL) as Kind[]).map((k) => (
+          <span key={k} className="inline-flex items-center gap-2">
+            <span className={`size-3 ${KIND_STYLE[k]}`} />
+            {KIND_LABEL[k]}
+          </span>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {INTEGRATIONS.map((it) => (
+          <Tile key={it.id} it={it} active={it.id === selected} onClick={() => setSelected(it.id)} />
+        ))}
+      </div>
+
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={sel.id}
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.18 }}
+          className="mt-3 flex flex-wrap items-start justify-between gap-4 border border-ink bg-card p-5"
+        >
+          <div className="max-w-3xl">
+            <p className="text-xs uppercase tracking-[0.14em] text-muted">
+              {KIND_LABEL[sel.kind]} · {sel.by}
+            </p>
+            <p className="mt-2 text-[15px] leading-relaxed">
+              <span className="font-medium">{sel.name}.</span> {sel.role}
+            </p>
+          </div>
+          <a href={sel.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-sm text-ink-2 hover:text-ink">
+            Website <ArrowUpRight size={14} />
+          </a>
+        </motion.div>
+      </AnimatePresence>
+
+      <section className="mt-16">
+        <h2 className="mb-5 border-b border-rule pb-3 font-serif text-2xl font-medium tracking-tight">How it works</h2>
+        <ol className="flex flex-col gap-3 lg:flex-row lg:items-stretch lg:gap-0">
+          {STEPS.map((s, i) => (
+            <li key={s.title} className="flex items-stretch lg:flex-1">
+              <div className="flex flex-1 flex-col border border-rule bg-card p-4">
+                <p className="font-serif text-xl text-accent">{i + 1}</p>
+                <p className="mt-1 font-medium leading-snug">{s.title}</p>
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {s.uses.map((id) => {
+                    const it = byId(id);
+                    return (
+                      <button
+                        key={id}
+                        onClick={() => setSelected(id)}
+                        className={`px-1.5 py-0.5 text-xs ${KIND_STYLE[it.kind]} ${id === selected ? "outline outline-2 outline-offset-1 outline-ink" : ""}`}
+                      >
+                        {it.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {i < STEPS.length - 1 && (
+                <span className="hidden items-center px-1 text-muted lg:flex" aria-hidden>
+                  <ArrowRight size={16} />
+                </span>
+              )}
             </li>
           ))}
         </ol>
-      </Section>
+      </section>
 
-      <Section title="Powered by" aside="Every service and model in the product, and what it does">
-        {GROUPS.map((g) => (
-          <div key={g.kind} className="mt-8 first:mt-0">
-            <div className="mb-3 flex flex-wrap items-baseline gap-3">
-              <h3 className="text-xs font-medium uppercase tracking-[0.18em] text-ink">{g.title}</h3>
-              <p className="text-xs text-muted">{g.note}</p>
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {INTEGRATIONS.filter((i) => i.kind === g.kind).map((it) => (
-                <IntegrationCard key={it.name} it={it} />
-              ))}
-            </div>
-          </div>
-        ))}
-        <p className="mt-8 text-xs text-muted">
-          Demo footage: Pexels (free licence). Brand ads are shown for demonstration only, with no affiliation.
-        </p>
-      </Section>
+      <p className="mt-10 text-xs text-muted">
+        Optional: Brave Search API (extra web results for outreach) and the Gemini image API (cloud alternative to Stable
+        Diffusion). Demo footage from Pexels (free licence); brand ads shown for demonstration only, with no affiliation.
+      </p>
     </div>
   );
 }

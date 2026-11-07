@@ -50,6 +50,7 @@ class Job:
     out_prefix: Path | None = None
     video: Path | None = None
     debug: bool = True
+    mode: str = "insert"             # "run": pipeline/run.py (task 1) | "insert": insert_ad.py directly
 
     def public(self, log_lines: int = 20) -> dict:
         pct = None
@@ -62,7 +63,7 @@ class Job:
             "created": self.created, "started": self.started, "finished": self.finished,
             "progress": {"frames_done": self.frames_done, "frames_total": self.frames_total, "percent": pct},
             "returncode": self.returncode, "error": self.error, "manifest": self.manifest,
-            "regions": self.regions, "log": list(self.log)[-log_lines:],
+            "regions": self.regions, "mode": self.mode, "log": list(self.log)[-log_lines:],
         }
 
 
@@ -133,6 +134,20 @@ class JobRunner:
         video = self.s.root / (req.video or f"assets/clips/{clip}.mp4")
         if not video.is_file():
             raise NotFound(f"video not found: {self.store.rel(video) if video.is_relative_to(self.s.root) else video}")
+        run_py = self.s.root / "pipeline" / "run.py"
+        if run_py.is_file() and not req.corners and not req.ads:
+            # task 1's orchestrator: AI surface detection, scene analysis, real creatives, manifest
+            cmd = [self.s.python, "-u", str(run_py), str(video)]
+            if req.regions:
+                bad = [r for r in req.regions if not regions.is_country(r)]
+                if bad:
+                    raise BadRequest(f"unknown country codes: {bad}")
+                cmd += ["--regions", *[r.upper() for r in req.regions]]
+            if req.max_frames:
+                cmd += ["--max-frames", str(req.max_frames)]
+            return Job(id=uuid.uuid4().hex[:12], clip=clip, command=cmd, mode="run",
+                       regions=[r.upper() for r in req.regions or []], out_prefix=self.s.output_dir / clip,
+                       video=video, debug=True, frames_total=req.max_frames or None)
         corners = self._corners_file(req, clip)
         ads = self._ads(req, clip)
         out_prefix = self.s.output_dir / clip
@@ -195,7 +210,8 @@ class JobRunner:
             job.returncode = proc.wait()
             if job.returncode != 0:
                 raise RuntimeError(f"pipeline exited with code {job.returncode}")
-            job.manifest = self.write_manifest(job, summary)
+            job.manifest = (self.adopt_manifest(job, summary) if job.mode == "run"
+                            else self.write_manifest(job, summary))
             job.status = "done"
         except Exception as e:  # report, don't crash the server
             job.status, job.error = "failed", str(e)
@@ -203,6 +219,22 @@ class JobRunner:
             job.finished = time.time()
 
     # ---------- manifest ----------
+    def adopt_manifest(self, job: Job, summary: tuple[int, int] | None) -> str:
+        """run.py wrote the manifest; validate it and add the optional `stats` block for the dashboard."""
+        path = self.s.output_dir / f"{job.clip}.manifest.json"
+        if not path.is_file():
+            raise RuntimeError("pipeline finished but wrote no manifest.json")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        m = Manifest.model_validate(data)            # raises if the contract is broken
+        job.regions = [r.code for r in m.regions]
+        if summary:
+            first = next((r.video for r in m.regions if r.video.startswith("output/")), None)
+            probed = (probe_video(self.s.root / first) if first else None) or ClipStats()
+            data["stats"] = ClipStats(frames=summary[0], lost_frames=summary[1], fps=probed.fps,
+                                      width=probed.width, height=probed.height).model_dump(exclude_none=True)
+            path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        return self.store.rel(path)
+
     def write_manifest(self, job: Job, summary: tuple[int, int] | None) -> str:
         """Write output/<clip>.manifest.json in the CLAUDE.md contract (+ optional `stats`)."""
         clip, prefix = job.clip, job.out_prefix

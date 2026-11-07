@@ -216,14 +216,19 @@ class Store:
 
     # ---------- ads ----------
     def ads(self) -> tuple[list[Ad], str]:
+        """data/ads.json (task 4) wins; markets it doesn't cover yet keep their sample ad."""
+        samples = [Ad.model_validate(a) for a in SAMPLE_ADS]
         path = self.s.data_dir / "ads.json"
-        if path.is_file():
-            data = self._read_json(path)
-            try:
-                return [Ad.model_validate(a) for a in data], "data/ads.json"
-            except (ValidationError, TypeError) as e:
-                raise BadData(f"data/ads.json does not match the contract: {e}") from e
-        return [Ad.model_validate(a) for a in SAMPLE_ADS], "sample"
+        if not path.is_file():
+            return samples, "sample"
+        data = self._read_json(path)
+        try:
+            real = [Ad.model_validate(a) for a in data]
+        except (ValidationError, TypeError) as e:
+            raise BadData(f"data/ads.json does not match the contract: {e}") from e
+        covered = {a.region.upper() for a in real}
+        filler = [a for a in samples if a.region.upper() not in covered]
+        return real + filler, "data/ads.json" + (" + sample" if filler else "")
 
     def ad(self, ad_id: str) -> Ad:
         for a in self.ads()[0]:

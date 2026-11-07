@@ -281,8 +281,12 @@ def test_ads_sample_and_file(root, client):
     r = client.get("/api/ads?region=us").json()
     assert r["source"] == "sample" and [a["id"] for a in r["ads"]] == ["us-burger-bros"]
     assert client.get("/api/ads/missing").status_code == 404
-    write(root / "data/ads.json", [{"id": "x", "region": "RO", "brand": "X"}])
-    assert client.get("/api/ads").json()["source"] == "data/ads.json"
+    write(root / "data/ads.json", [{"id": "x", "region": "RO", "brand": "X", "creative": "data/creatives/x.jpg"}])
+    r = client.get("/api/ads").json()
+    assert r["source"] == "data/ads.json + sample"
+    ro = [a for a in r["ads"] if a["region"] == "RO"]
+    assert [a["id"] for a in ro] == ["x"] and ro[0]["creative"] == "data/creatives/x.jpg"   # real ad replaces sample
+    assert any(a["region"] == "DE" for a in r["ads"])                                     # other markets keep theirs
 
 
 # ---------- dashboard ----------
@@ -404,3 +408,53 @@ def test_job_api_end_to_end(job_root):
     assert j["status"] == "done", j
     ro = next(r for r in c.get("/api/clips/melbourne").json()["regions"] if r["code"] == "RO")
     assert ro["video_url"] == "/output/melbourne_ro.mp4"
+
+
+FAKE_RUN_PY = """
+import json, sys
+from pathlib import Path
+args = sys.argv[1:]
+video = Path(args[0]); clip = video.stem
+root = Path(__file__).resolve().parent.parent
+out = root / "output"; out.mkdir(exist_ok=True)
+regions = ["RO", "JP"]
+if "--regions" in args:
+    regions = []
+    for a in args[args.index("--regions") + 1:]:
+        if a.startswith("--"):
+            break
+        regions.append(a)
+print("  30/60 frames  (lost so far: 0)", flush=True)
+for r in regions:
+    (out / f"{clip}_{r.lower()}.mp4").write_bytes(b"x")
+(out / f"{clip}_ai_view.mp4").write_bytes(b"x")
+print("frames: 60, billboard lost in 6", flush=True)
+manifest = {"clip": clip, "source": f"assets/clips/{clip}.mp4", "ai_view": f"output/{clip}_ai_view.mp4",
+            "compare": None, "surface": {"id": "s1"},
+            "regions": [{"code": r, "label": r, "video": f"output/{clip}_{r.lower()}.mp4",
+                         "ad_id": f"{r.lower()}-brand", "brand": "Brand", "reason": "AI"} for r in regions]}
+(out / f"{clip}.manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+"""
+
+
+def test_job_uses_run_py_when_present(job_root):
+    write(job_root / "pipeline/run.py", FAKE_RUN_PY.encode())
+    settings = Settings(root=job_root, python=sys.executable)
+    runner = JobRunner(settings, Store(settings))
+    job = runner.build(JobRequest(clip="melbourne", regions=["ro", "de"], max_frames=60))
+    assert job.mode == "run" and "--regions" in job.command and "RO" in job.command
+    runner.run(job)
+    assert job.status == "done", (job.error, list(job.log))
+    assert job.regions == ["RO", "DE"] and job.frames_done == 30
+    m = json.loads((job_root / "output/melbourne.manifest.json").read_text(encoding="utf-8"))
+    assert m["surface"] == {"id": "s1"} and m["regions"][0]["brand"] == "Brand"      # run.py's fields kept
+    assert m["stats"]["frames"] == 60 and m["stats"]["lost_frames"] == 6             # stats added
+    # explicit ads / corners still go straight to insert_ad.py
+    legacy = runner.build(JobRequest(clip="melbourne", ads={"RO": "assets/ads/ro_portrait.png"}))
+    assert legacy.mode == "insert"
+
+
+def test_job_run_py_bad_region(job_root):
+    write(job_root / "pipeline/run.py", FAKE_RUN_PY.encode())
+    r = make_client(job_root).post("/api/jobs", json={"clip": "melbourne", "regions": ["ZZ"]})
+    assert r.status_code == 400

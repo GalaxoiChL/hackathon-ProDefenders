@@ -103,3 +103,4 @@ class JobRequest(BaseModel):
     occlude: bool = True
     debug: bool = True
     max_frames: int = 0
+    regions: list[str] | None = Field(None, description="pipeline/run.py: which countries (default: all with an ad)")

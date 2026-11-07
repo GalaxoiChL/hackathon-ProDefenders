@@ -32,7 +32,7 @@ Teste: `.venv/Scripts/python -m pytest -q tests`
 | GET | `/api/clips/{clip}/surfaces` | spațiile publicitare (AI sau marcate manual) |
 | GET | `/api/clips/{clip}/stats?views=` | dashboard: spații, vizibilitate, venit estimat, cost vs. valoare |
 | GET | `/api/ads?region=`, `/api/ads/{id}` | baza de reclame |
-| POST | `/api/jobs` | pornește pipeline-ul pentru un clip; la final scrie `output/<clip>.manifest.json` |
+| POST | `/api/jobs` | pornește pipeline-ul pentru un clip: `{clip, max_frames?, regions?}` rulează `pipeline/run.py` (detecție AI, analiza scenei, reclame reale, manifest), iar backend-ul adaugă `stats`. Cu `ads`/`corners` explicite rulează direct `insert_ad.py` |
 | GET | `/api/jobs`, `/api/jobs/{id}` | progres (cadre procesate / total, %) și ultimele linii de log |
 | GET | `/output/…`, `/assets/…`, `/data/…` | fișiere statice; video-urile acceptă cereri Range (seek în player) |
 
@@ -140,7 +140,7 @@ Categorii: `food`, `drinks`, `retail`, `beauty`, `fitness`, `hotel`, `any`. Făr
 |---|---|
 | `output/<clip>.manifest.json` | îl construiește din fișierele `output/<clip>_<xx>.mp4` existente |
 | `<clip>.surfaces.json` | folosește colțurile marcate manual în `assets/clips/<clip>.corners.json` |
-| `data/ads.json` | folosește 15 reclame exemplu, câte una pe piață (Pizza Bunicii, Burger Bros, Sakura Ramen, Brezelhaus, Café Lumière…) |
+| `data/ads.json` (sau o piață lipsă din el) | reclamele reale din `data/ads.json` au prioritate; piețele pe care nu le acoperă primesc exemplul din backend. Dacă fișierul lipsește complet, se folosesc 15 reclame exemplu, câte una pe piață (Pizza Bunicii, Burger Bros, Sakura Ramen, Brezelhaus, Café Lumière…) |
 | PNG-urile generate (task 2) | jobul folosește `assets/ads/<xx>_portrait.png` (există pentru toate cele 15 piețe) |
 | internet (geolocație) | regiunea implicită |
 

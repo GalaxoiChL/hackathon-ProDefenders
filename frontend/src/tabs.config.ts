@@ -20,7 +20,8 @@ export interface TabDef {
 export const TABS: TabDef[] = [
   { id: "watch", label: "Watch", component: WatchTab, enabled: true },
   { id: "compare", label: "Compare", component: CompareTab, enabled: true },
-  { id: "upload", label: "Upload", component: UploadTab, enabled: true },
+  // ascuns pentru prezentare; codul rămâne, se reactivează cu enabled: true
+  { id: "upload", label: "Upload", component: UploadTab, enabled: false },
   { id: "marketplace", label: "Marketplace", component: MarketplaceTab, enabled: true },
   { id: "companies", label: "Companies", component: CompaniesTab, enabled: true },
   { id: "outreach", label: "Outreach", component: OutreachTab, enabled: true },

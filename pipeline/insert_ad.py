@@ -22,9 +22,26 @@ import numpy as np
 OCCLUDER_CLASSES = {"person": 0, "bicycle": 1, "car": 2, "motorcycle": 3, "bus": 5, "truck": 7}
 
 
-def load_corners(path: Path) -> np.ndarray:
-    """Corners in order TL, TR, BR, BL, in original-frame pixel coordinates."""
+def load_corners(path: Path, surface_id: str | None = None) -> np.ndarray:
+    """Corners in order TL, TR, BR, BL, in original-frame pixel coordinates.
+
+    Accepts either a manual corners file ({"corners": [...]}) or the AI detector's
+    surfaces file ({"surfaces": [...]}); for the latter it takes `surface_id`, or the
+    most confident surface when no id is given.
+    """
     data = json.loads(path.read_text(encoding="utf-8"))
+    if "surfaces" in data:
+        surfaces = data["surfaces"]
+        if not surfaces:
+            raise SystemExit(f"{path}: the detector found no ad surfaces")
+        if surface_id:
+            match = [s for s in surfaces if s["id"] == surface_id]
+            if not match:
+                raise SystemExit(f"{path}: no surface {surface_id!r}; have {[s['id'] for s in surfaces]}")
+            data = match[0]
+        else:
+            data = max(surfaces, key=lambda s: s.get("confidence", 0))
+        print(f"using surface {data['id']} ({data.get('type')}, confidence {data.get('confidence')})")
     pts = np.float32(data["corners"])
     if pts.shape != (4, 2):
         raise ValueError(f"{path}: expected 4 [x, y] corners, got shape {pts.shape}")
@@ -278,7 +295,9 @@ def finalize(tmp_video: Path, source: Path, out: Path) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("video", type=Path)
-    ap.add_argument("--corners", type=Path, required=True, help="JSON with 4 corners (TL,TR,BR,BL) on the first frame")
+    ap.add_argument("--corners", type=Path, required=True,
+                    help="corners JSON (manual) or surfaces JSON from detect_surfaces.py, on the first frame")
+    ap.add_argument("--surface", help="surface id to use from a surfaces JSON (default: most confident)")
     ap.add_argument("--ad", action="append", required=True, help="region=path/to/ad.png (repeatable)")
     ap.add_argument("--out", type=Path, required=True, help="output prefix, e.g. output/street -> output/street_ro.mp4")
     ap.add_argument("--track", action="store_true", help="track the billboard (moving camera)")
@@ -305,7 +324,7 @@ def main() -> None:
     w, h = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    corners = load_corners(args.corners)
+    corners = load_corners(args.corners, args.surface)
     occ = Occluders(args.occluders.split(",")) if args.occlude else None
 
     args.out.parent.mkdir(parents=True, exist_ok=True)

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -44,7 +45,9 @@ def rel(p: Path) -> str:
 
 def run(cmd: list[str]) -> None:
     print("$", " ".join(str(c) for c in cmd), flush=True)
-    subprocess.run([str(c) for c in cmd], check=True, cwd=ROOT)
+    # UTF-8 output for the steps (Windows defaults a piped stdout to cp1252: "ă" crashed analyze_scene)
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
+    subprocess.run([str(c) for c in cmd], check=True, cwd=ROOT, env=env)
 
 
 def load_json(path: Path):
@@ -101,6 +104,10 @@ def creative_for(region: str, ad: dict | None, clip: str, aspect: float, work: P
 
 
 def main() -> None:
+    # Romanian text in the output: keep it printable when stdout is a pipe or a file (cp1252 on Windows)
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("video", type=Path)
     ap.add_argument("--regions", nargs="+", help="default: every region that has an ad in data/ads.json")

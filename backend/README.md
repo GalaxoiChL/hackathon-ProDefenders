@@ -2,19 +2,21 @@
 
 Stă între pipeline (task 1 și 2) și demo (task 3). Citește fișierele produse de pipeline, servește video-urile, alege țara privitorului după IP, calculează cifrele pentru dashboard și pornește pipeline-ul în fundal.
 
-## Pornire
+## Pornire (o singură comandă)
 
 ```bash
-python -m venv .venv
-.venv/Scripts/pip install -r backend/requirements.txt      # doar serverul (fără torch)
-.venv/Scripts/python -m uvicorn backend.app:app --reload --port 8000
+python backend/start.py               # din rădăcina repo-ului sau din orice folder
+python backend/start.py --reload      # repornește la modificări de cod
+python backend/start.py --pipeline    # instalează și motorul AI (torch, YOLO, OpenCV), pentru POST /api/jobs
 ```
 
+- La prima rulare creează `backend/.venv` și instalează `backend/requirements.txt` (doar serverul, fără torch). Apoi reinstalează doar când se schimbă un fișier de requirements.
 - Documentația interactivă e la http://localhost:8000/docs
-- După `cd frontend && npm run build`, frontendul construit (`frontend/dist/`) e servit la http://localhost:8000/, de pe aceeași origine, deci fără probleme de CORS la demo. În dezvoltare, `npm run dev` merge separat.
-- Pentru `POST /api/jobs` trebuie instalate și dependențele motorului: `pip install -r requirements.txt`.
+- Tot ce folosește serverul e în `backend/`: datele (`data/`, `assets/`, `output/`), motorul AI (`pipeline/`), testele (`tests/`) și configurarea (`backend/.env`). Căile din manifeste sunt relative la `backend/`.
+- După `cd frontend && npm run build`, frontendul construit (`frontend/dist/`) e servit la http://localhost:8000/, de pe aceeași origine. În dezvoltare, `npm --prefix frontend start` merge separat, pe portul 5173.
+- Fără OpenCV (instalarea fără `--pipeline`), `/stats` nu știe durata clipului și întoarce `null` la `visible_seconds`; frontend-ul arată „—”.
 
-Teste: `.venv/Scripts/python -m pytest -q tests`
+Teste: `backend/.venv/Scripts/python -m pytest -q backend/tests`
 
 ## Endpoint-uri
 
@@ -154,6 +156,6 @@ Categorii: `food`, `drinks`, `retail`, `beauty`, `fitness`, `hotel`, `any`. Făr
 | PNG-urile generate (task 2) | jobul folosește `assets/ads/<xx>_portrait.png` (există pentru toate cele 15 piețe) |
 | internet (geolocație) | regiunea implicită |
 
-## Configurare (`.env`, opțional)
+## Configurare (`backend/.env`, opțional)
 
-Vezi `.env.example` în rădăcina repo-ului.
+Copiază `backend/.env.example` în `backend/.env`.

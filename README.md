@@ -1,32 +1,26 @@
-# Nume Proiect
+# ProDefenders
 
-Scurtă descriere: ce problemă rezolvă proiectul și pentru cine (1-2 propoziții).
+Reclame în video adaptate țării privitorului, puse de AI: același clip arată pe un panou de pe stradă altă reclamă pentru fiecare țară. Hackathon ITFest 2026 (sponsor Adobe).
 
-## Echipa
+## Pornire
 
-| Nume | Rol |
-|------|-----|
-| Nume 1 | Frontend |
-| Nume 2 | Backend |
-| Nume 3 | Bază de date / API |
-| Nume 4 | Design + prezentare |
-
-## Tehnologii
-
-- Frontend: ...
-- Backend: ...
-- Bază de date: ...
-
-## Cum rulezi proiectul
+Din rădăcina repo-ului, în două terminale:
 
 ```bash
-git clone https://github.com/user/nume-proiect.git
-cd nume-proiect
-# instalează dependențele (ex: npm install / pip install -r requirements.txt)
-# pornește aplicația (ex: npm run dev / python app.py)
+python backend/start.py          # backend: http://localhost:8000 (API docs la /docs)
+npm --prefix frontend start      # frontend: http://localhost:5173
 ```
 
-Dacă proiectul folosește chei API, creează un fișier `.env` (nu îl urca pe GitHub!).
+Prima rulare instalează singură dependențele (`backend/.venv`, `frontend/node_modules`). Fără nimic instalat, demo-ul se deschide și cu dublu-click pe `frontend/demo/index.html`.
+
+## Structura
+
+| Folder | Ce conține |
+|---|---|
+| `backend/` | serverul API (FastAPI), motorul video AI (`pipeline/`), datele (`data/`, `assets/`, `output/`), testele, configurarea (`.env`) |
+| `frontend/` | site-ul (React + Vite) și demo-ul de dublu-click (`demo/`) |
+
+Detalii: [CLAUDE.md](CLAUDE.md) (ghidul proiectului) și [backend/README.md](backend/README.md) (API).
 
 ## Reguli de lucru
 
@@ -34,10 +28,3 @@ Dacă proiectul folosește chei API, creează un fișier `.env` (nu îl urca pe 
 2. Fă `git pull` des ca să ai ultimele modificări.
 3. Commit-uri mici, cu mesaje clare.
 4. Când o parte e gata: Pull Request și merge în `main`.
-
-## Status
-
-- [ ] Idee și plan
-- [ ] Prima versiune funcțională
-- [ ] Testare
-- [ ] Prezentare pentru juriu

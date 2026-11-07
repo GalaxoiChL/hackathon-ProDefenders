@@ -1,6 +1,6 @@
 """FastAPI server for the demo.
 
-Run:   uvicorn backend.app:app --reload --port 8000
+Run:   python backend/start.py --reload   (or: uvicorn backend.app:app --port 8000 from the repo root)
 Docs:  http://localhost:8000/docs
 """
 from __future__ import annotations

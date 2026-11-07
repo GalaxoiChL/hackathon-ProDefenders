@@ -67,7 +67,7 @@ function Footer({ tabCount }: { tabCount: number }) {
           {data?.source === "api"
             ? "Connected to the ProDefenders API"
             : data?.source === "media"
-              ? "Team videos from the repo (demo/media)"
+              ? "Team videos from the repo (frontend/demo/media)"
               : data?.source === "session"
                 ? "Your upload: it lives only in this tab"
                 : data?.source === "live"

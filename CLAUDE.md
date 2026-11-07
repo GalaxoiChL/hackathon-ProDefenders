@@ -48,6 +48,27 @@ clip video
 
 AI-ul de analiză rulează **local** (Ollama, YOLO): e rapid, privat și gratuit. Doar generarea imaginilor merge în cloud.
 
+## Structura repo-ului
+
+```
+backend/                 tot ce ține de server și de motorul AI
+  start.py               ← pornește backend-ul (o singură comandă)
+  app.py, config.py, …   serverul API (FastAPI, pachetul Python `backend`), outreach/, tools/
+  pipeline/              motorul video AI (run.py, insert_ad.py, detect_surfaces.py, …)
+  data/ assets/ output/  datele: reclame, clipuri sursă, randări
+  tests/                 testele serverului
+  requirements.txt       dependențele serverului (ușoare, fără torch)
+  requirements-pipeline.txt   dependențele motorului AI (torch, YOLO, OpenCV)
+  .env.example           copiază-l în backend/.env
+  .venv/                 creat de start.py (nu e în git)
+frontend/                site-ul (React + Vite)
+  npm start              ← pornește frontend-ul (o singură comandă)
+  src/                   codul site-ului
+  demo/                  site-ul de dublu-click (index.html) + clipurile echipei în demo/media/ (Git LFS)
+```
+
+Căile din contracte și manifeste (`data/...`, `output/...`, `assets/...`) sunt **relative la `backend/`** și se servesc la aceleași URL-uri (`/output/...`).
+
 ## Împărțirea muncii: 4 task-uri, unul pentru fiecare
 
 Scrie-ți numele în coloana **Owner**, lucrează pe branch-ul indicat și deschide un Pull Request spre `main` când ai ceva funcțional.
@@ -58,9 +79,9 @@ Scrie-ți numele în coloana **Owner**, lucrează pe branch-ul indicat și desch
 | **2** | **AI de scenă și adaptarea reclamelor** | ✅ analiza scenei, brand safety și alegerea reclamei cu motiv (`analyze_scene.py`, gata). **Rămâne:** adaptarea reclamei la formatul suprafeței cu AI (recompunerea fundalului prin API de imagini), în locul decupării din `adapt_ad.py` | câte un PNG per țară în `assets/generated/<clip>/<regiune>.png`, exact la formatul (`aspect`) suprafeței, fără text tăiat | `ai-ads` | analiză: Alex + Claude; adaptare: _liber_ |
 | **3** | **Frontend demo** | player web cu țările sincronizate, selector de țară sau geolocație IP, buton „Arată ce vede AI-ul”, dashboard pentru advertiser (spații, vizibilitate, venit estimat) | demo-ul complet rulează în browser, citind `manifest.json` | `frontend` | _liber_ |
 | **4** | **Date, conținut și pitch** | `data/ads.json` cu 2–3 branduri reale per țară (RO, US, JP) și reclamele lor reale (imagini salvate în `data/creatives/`), 2–3 clipuri demo (cameră fixă, oameni prin fața panoului), cifre cost/valoare, prezentarea de 3 minute | baza de date completă, clipurile alese, slide-urile și pitch-ul repetat | `content` | _liber_ |
-| **B** | **Server API** | FastAPI în `backend/`: servește manifestele și video-urile (cu seek), 15 piețe demo (US, RO, JP + 12 din Europa), geolocație IP care mapează orice țară din lume pe cea mai apropiată piață, cifrele pentru dashboard, joburi care rulează pipeline-ul și scriu `manifest.json`, fallback-uri pentru demo; **prospectare advertiseri**: AI-ul caută firme locale (OpenStreetMap), le califică și le scrie emailuri în limba lor, cu aprobare umană, iar firmele licitează pe spațiile din video | ✅ v1 gata: `uvicorn backend.app:app`, 58 de teste trec; detalii în `backend/README.md` | `backend` | _liber_ |
+| **B** | **Server API** | FastAPI în `backend/`: servește manifestele și video-urile (cu seek), 15 piețe demo (US, RO, JP + 12 din Europa), geolocație IP care mapează orice țară din lume pe cea mai apropiată piață, cifrele pentru dashboard, joburi care rulează pipeline-ul și scriu `manifest.json`, fallback-uri pentru demo; **prospectare advertiseri**: AI-ul caută firme locale (OpenStreetMap), le califică și le scrie emailuri în limba lor, cu aprobare umană, iar firmele licitează pe spațiile din video | ✅ v1 gata: `python backend/start.py`, testele trec; detalii în `backend/README.md` | `backend` | _liber_ |
 
-Dependențe: **3** poate începe imediat cu videoclipurile existente din `output/`. **2** are nevoie de formatul `ads.json` (de mai jos) pentru textul reclamelor; până e gata baza de date, folosește exemplul din contract. **1** leagă totul la final; până atunci fiecare task rulează singur, pe fișiere.
+Dependențe: **3** poate începe imediat cu videoclipurile existente din `backend/output/`. **2** are nevoie de formatul `ads.json` (de mai jos) pentru textul reclamelor; până e gata baza de date, folosește exemplul din contract. **1** leagă totul la final; până atunci fiecare task rulează singur, pe fișiere.
 
 ## Reclamele: reclame reale ale brandurilor + AI care adaptează formatul (decizie de echipă)
 
@@ -68,7 +89,7 @@ Dependențe: **3** poate începe imediat cu videoclipurile existente din `output
 - **Produsul și reclama rămân cele reale.** AI-ul nu inventează produse și nu schimbă mesajul brandului.
 - Problema pe care o rezolvă AI-ul: reclama reală vine într-un singur format, dar trebuie să încapă pe suprafețe foarte diferite (în clipul de test: panou vertical 0,74, firmă 1,55, autobuz 2,92). AI-ul extinde sau recompune **fundalul** din jurul reclamei ca să se potrivească formatului, fără să o deformeze.
 - În prezentare: mențiunea *„Branduri folosite strict demonstrativ, fără afiliere”*. Videoclipurile cu branduri reale nu se publică online.
-- API de imagini: Firefly nu e disponibil. Încercăm întâi **Gemini** (cheie în `.env` ca `GEMINI_API_KEY`), apoi Replicate/FLUX. Furnizorul trebuie să fie interschimbabil.
+- API de imagini: Firefly nu e disponibil. Încercăm întâi **Gemini** (cheie în `backend/.env` ca `GEMINI_API_KEY`), apoi Replicate/FLUX. Furnizorul trebuie să fie interschimbabil.
 - **Fallback sigur pentru demo:** dacă API-ul nu merge, se folosește reclama reală, încadrată fără deformare (crop/padding pe culoarea dominantă). Demo-ul nu are voie să depindă de internet.
 
 ## Contracte între module (respectați formatul ca piesele să se lege)
@@ -125,16 +146,27 @@ Opțional, `"stats": { "frames": 480, "lost_frames": 12, "fps": 25, "width": 192
 - **Marketplace (filme):** `GET /api/movies` întoarce tabelul de filme (un rând pe clip). `GET /api/movies/{clip}` întoarce locurile de reclamă din film (`places`, câte unul pe suprafața din `surfaces.json`), fiecare cu oferta pe fiecare țară (`offers`). `POST /api/placements/{id}/bids {company, email, amount_usd, category?, message?}` primește oferta oricărei firme. Un spațiu de vânzare are id-ul `clip:suprafață:ȚARĂ`, de exemplu `melbourne:s2:DE`. Emailurile ofertanților nu sunt publice.
 - Fișierele sunt servite la `/output/...`, `/assets/...` și `/data/...` (căile din manifest + `/` în față).
 
-## Cum rulezi (o singură comandă)
+## Cum rulezi (o comandă pentru fiecare parte)
+
+Din rădăcina repo-ului, în două terminale:
 
 ```bash
-python -m venv .venv          # sau: python -m uv venv .venv
-.venv/Scripts/pip install -r requirements.txt     # Windows; pe Mac/Linux: .venv/bin/pip
-# reclamele reale nu sunt în git: descarcă fiecare `creative` din data/ads.json de la `creative_source`
-.venv/Scripts/python.exe pipeline/run.py assets/clips/melbourne.mp4 --max-frames 480
+python backend/start.py          # backend: http://localhost:8000 (API docs la /docs)
+npm --prefix frontend start      # frontend: http://localhost:5173 (sau: cd frontend && npm start)
 ```
 
-Progresul randării: `Get-Content output\progress.txt` (se actualizează la fiecare 30 de cadre).
+- `backend/start.py` creează la prima rulare `backend/.venv` și instalează `backend/requirements.txt`; apoi reinstalează doar când se schimbă un fișier de requirements. Opțiuni: `--reload` (repornește la modificări de cod), `--port 8000`, `--pipeline` (instalează și motorul AI: torch, YOLO, OpenCV; descărcare mare).
+- `npm start` instalează pachetele (`npm install`, rapid când sunt deja la zi) și pornește Vite. Frontend-ul trimite `/api` la backend-ul de pe portul 8000; dacă backend-ul nu rulează, citește direct fișierele din `backend/output/` și `frontend/demo/media/`.
+- Testele backend-ului: `backend/.venv/Scripts/python -m pytest -q backend/tests`
+
+**Motorul AI** (randare pe țări, rulat de mână sau prin `POST /api/jobs`), după `python backend/start.py --pipeline`:
+
+```bash
+# reclamele reale nu sunt în git: descarcă fiecare `creative` din backend/data/ads.json de la `creative_source`
+backend/.venv/Scripts/python.exe backend/pipeline/run.py backend/assets/clips/melbourne.mp4 --max-frames 480
+```
+
+Progresul randării: `Get-Content backend\output\progress.txt` (se actualizează la fiecare 30 de cadre).
 
 `run.py` face tot lanțul: detectare AI (dacă nu există deja `output/<clip>.surfaces.json`), analiza AI a scenei cu Ollama (dacă nu există `output/<clip>.scene.json`; Ollama trebuie pornit), alegerea reclamei pe țară, adaptarea la formatul suprafeței, randarea tuturor țărilor + „AI view” + video comparativ, apoi scrie `output/<clip>.manifest.json`.
 
@@ -143,14 +175,16 @@ Folosește automat ce produc celelalte task-uri, dacă există, altfel are fallb
 - `output/<clip>.scene.json` (generat automat de `analyze_scene.py`) pentru alegerea AI și motiv; dacă Ollama nu merge: primul brand al regiunii
 - `assets/generated/<clip>/<regiune>.png` (task 2) pentru reclama adaptată de AI; fără el: `adapt_ad.py` încadrează reclama fără deformare
 
-**Demo-ul se deschide fără nimic instalat:** dublu-click pe `demo/index.html` (Chrome sau Edge). Site-ul e într-un singur fișier și redă clipurile din `demo/media/`; are și butonul **Upload**, care pune o reclamă pe un video ales de tine direct în browser. Videoclipurile ajung în demo prin Git LFS: la final, `run.py` (și joburile din backend) rulează `pipeline/publish_media.py`, care copiază versiunile pe țări, „AI view”, clipul original scurtat și manifestul în `demo/media/<clip>/` și regenerează `demo/media/catalog.js`. Faci commit + push la `demo/media`, iar colegii primesc clipul cu `git pull`. O singură dată pe fiecare laptop: `git lfs install`. Manual: `python pipeline/publish_media.py <clip>` sau `--all`. Codul site-ului din `demo/index.html` se reface cu `cd frontend && npm run build:demo` (doar când se schimbă frontend-ul, nu la clipuri noi). Limita gratuită GitHub LFS: 1 GB stocare și 1 GB descărcări pe lună, deci publicăm doar clipurile finale.
+**Demo-ul se deschide fără nimic instalat:** dublu-click pe `frontend/demo/index.html` (Chrome sau Edge). Site-ul e într-un singur fișier și redă clipurile din `frontend/demo/media/`; are și butonul **Upload**, care pune o reclamă pe un video ales de tine direct în browser. Videoclipurile ajung în demo prin Git LFS: la final, `run.py` (și joburile din backend) rulează `backend/pipeline/publish_media.py`, care copiază versiunile pe țări, „AI view”, clipul original scurtat și manifestul în `frontend/demo/media/<clip>/` și regenerează `frontend/demo/media/catalog.js`. Faci commit + push la `frontend/demo/media`, iar colegii primesc clipul cu `git pull`. O singură dată pe fiecare laptop: `git lfs install`. Manual: `python backend/pipeline/publish_media.py <clip>` sau `--all`. Codul site-ului din `frontend/demo/index.html` se reface cu `cd frontend && npm run build:demo` (doar când se schimbă frontend-ul, nu la clipuri noi). Limita gratuită GitHub LFS: 1 GB stocare și 1 GB descărcări pe lună, deci publicăm doar clipurile finale.
 
-Clipul de test nu e în git (prea mare). Se descarcă de pe [Pexels](https://www.pexels.com/video/people-walking-down-a-city-street-with-a-red-jacket-27817664/) și se salvează ca `assets/clips/melbourne.mp4`.
+Clipul de test nu e în git (prea mare). Se descarcă de pe [Pexels](https://www.pexels.com/video/people-walking-down-a-city-street-with-a-red-jacket-27817664/) și se salvează ca `backend/assets/clips/melbourne.mp4`.
+
+Scripturile de mai jos sunt în `backend/pipeline/`:
 
 | Script | Rol |
 |---|---|
 | `pipeline/run.py` | **comanda principală:** tot lanțul, de la clip la `manifest.json` |
-| `pipeline/publish_media.py` | publică randarea în `demo/media/` (Git LFS), ca demo-ul s-o arate la toată echipa |
+| `pipeline/publish_media.py` | publică randarea în `frontend/demo/media/` (Git LFS), ca demo-ul s-o arate la toată echipa |
 | `pipeline/analyze_scene.py` | **AI local (Ollama `gemma3:4b`):** descrie scena, verifică brand safety (scenă nesigură = fără reclamă), alege reclama potrivită per țară cu scor și motiv în română; scrie `scene.json` |
 | `pipeline/adapt_ad.py` | încadrează o reclamă la formatul suprafeței fără deformare (fallback pentru AI-ul din task 2) |
 | `pipeline/insert_ad.py` | motorul: urmărire (optical flow + omografie), pierdere și regăsire (SIFT), oameni în față (YOLO-seg), export pe țări + „AI view” |
@@ -159,25 +193,18 @@ Clipul de test nu e în git (prea mare). Se descarcă de pe [Pexels](https://www
 | `pipeline/side_by_side.py` | video cu țările una lângă alta, sincronizate |
 | `pipeline/contact_sheet.py` | imagine cu cadre-cheie pentru verificare rapidă |
 
-Serverul API (pornește și fără clipuri randate):
-```bash
-.venv/Scripts/pip install -r backend/requirements.txt
-.venv/Scripts/python -m uvicorn backend.app:app --reload --port 8000   # http://localhost:8000/docs
-.venv/Scripts/python -m pytest -q tests
-```
-
 ## Reguli de lucru
 
 - **Nu lucrăm direct pe `main`.** Branch-ul tău, apoi Pull Request.
 - `git pull` des. Commit-uri mici, cu mesaje clare.
-- **Nu urcăm** `output/`, clipurile sursă, greutăți de modele (`*.pt`) sau `.env`; sunt în `.gitignore`. **Excepție:** videoclipurile finale de demo, doar prin `publish_media.py` în `demo/media/` (Git LFS, vezi mai sus). Repo-ul e privat, deci rămân vizibile doar echipei.
+- **Nu urcăm** `backend/output/`, clipurile sursă, greutăți de modele (`*.pt`) sau `backend/.env`; sunt în `.gitignore`. **Excepție:** videoclipurile finale de demo, doar prin `publish_media.py` în `frontend/demo/media/` (Git LFS, vezi mai sus). Repo-ul e privat, deci rămân vizibile doar echipei.
 - Emailurile către firme pleacă **doar** aprobate de un om și cu `OUTREACH_SEND_ENABLED=true`; în demo, cu `OUTREACH_TEST_RECIPIENT`.
-- **Cheile API** stau doar în `.env` (ex. `IMAGE_API_KEY=...`), niciodată în cod, chat sau commit.
+- **Cheile API** stau doar în `backend/.env` (ex. `IMAGE_API_KEY=...`), niciodată în cod, chat sau commit.
 - Reclame **reale** de branduri, folosite doar demonstrativ (cu mențiunea de neafiliere în prezentare); clipurile video doar cu licență liberă (Pexels).
 
 ## Note pentru Claude Code
 
-- Mediu de dezvoltare: Windows, Python 3.14 în `.venv`, GPU RTX 3060 6 GB (PyTorch e momentan pe CPU), Ollama local cu `gemma3:4b`.
+- Mediu de dezvoltare: Windows, Python 3.14 în `backend/.venv`, GPU RTX 3060 6 GB (PyTorch e momentan pe CPU), Ollama local cu `gemma3:4b`.
 - Optimizează pentru demo: fallback-uri sigure (ex. rezultate pre-randate) în loc de funcții fragile.
 - Respectă contractele JSON de mai sus. Dacă trebuie schimbate, actualizează și acest fișier.
 - Urmărirea are 3 moduri: `local` (panoul vizibil), `coast` (panoul ascuns de autobuz sau ieșit din cadru: poziția urmează mișcarea camerei, autobuzul e segmentat și trece prin fața reclamei), `lost` (se caută prin SIFT până reapare).

@@ -118,7 +118,7 @@ export function ScreenPlaceholder({ path, compact = false }: { path?: string; co
     <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-screen px-6 text-center text-[#d9d5cc]">
       <p className={`font-serif ${compact ? "text-base" : "text-xl"}`}>Footage not rendered yet</p>
       {path && <p className="max-w-full truncate font-mono text-[11px] text-[#8f8a80]">{path}</p>}
-      {!compact && <p className="text-xs text-[#8f8a80]">Generate it with pipeline/insert_ad.py, then reload.</p>}
+      {!compact && <p className="text-xs text-[#8f8a80]">Generate it with backend/pipeline/insert_ad.py, then reload.</p>}
     </div>
   );
 }

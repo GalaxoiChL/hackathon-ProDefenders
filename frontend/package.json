@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "prestart": "npm install --no-audit --no-fund --loglevel=error",
+    "start": "vite",
     "dev": "vite",
     "build": "tsc && vite build",
     "build:demo": "tsc && vite build --mode demo",

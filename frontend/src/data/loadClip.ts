@@ -68,23 +68,27 @@ function normalize(raw: RawManifest): { manifest: Manifest; scene?: Scene; surfa
 }
 
 /** Răspunsul de la GET /api/clips/{clip}/stats (doar câmpurile folosite). */
+// Valorile pot fi null: fără OpenCV (instalarea doar pentru server) backend-ul nu știe durata clipului.
 interface ApiStats {
-  video?: { frames?: number; fps?: number; duration_s?: number; width?: number; height?: number };
-  visibility?: { visible_seconds?: number };
-  regions?: { code: string; impressions?: number; revenue_usd?: number }[];
+  video?: { frames?: number | null; fps?: number | null; duration_s?: number | null; width?: number | null; height?: number | null };
+  visibility?: { visible_seconds?: number | null };
+  regions?: { code: string; impressions?: number | null; revenue_usd?: number | null }[];
 }
+
+/** null de la server devine undefined, valoarea pe care o verifică restul site-ului ("—" în loc de cifră). */
+const num = (v: number | null | undefined) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
 
 function applyStats(m: Manifest, stats: ApiStats | undefined) {
   if (!stats) return;
-  m.duration_sec ??= stats.video?.duration_s;
-  m.fps ??= stats.video?.fps;
-  m.stats = { frames: stats.video?.frames, ...m.stats };
+  m.duration_sec ??= num(stats.video?.duration_s);
+  m.fps ??= num(stats.video?.fps);
+  m.stats = { frames: num(stats.video?.frames), ...m.stats };
   for (const r of m.regions) {
     const s = stats.regions?.find((x) => x.code === r.code);
     r.metrics = {
-      screen_time_sec: stats.visibility?.visible_seconds,
-      est_impressions: s?.impressions,
-      est_revenue_usd: s?.revenue_usd,
+      screen_time_sec: num(stats.visibility?.visible_seconds),
+      est_impressions: num(s?.impressions),
+      est_revenue_usd: num(s?.revenue_usd),
       ...r.metrics,
     };
   }

@@ -23,6 +23,13 @@ Tabs live in `src/tabs.config.ts`; reorder or hide them there.
 
 ## Data
 
+Sources, in order (see `src/data/loadClip.ts`; the footer shows which one is in use):
+1. **Backend API** (`backend` branch, `uvicorn backend.app:app --port 8000`). In dev, Vite proxies `/api` to it (`BACKEND_URL` to change). Uses `/api/clips`, `/api/clips/{clip}`, `/scene`, `/surfaces`, `/stats`, `/play` (viewer country from IP) and `/api/ads`.
+2. **Files** in `output/` written by `pipeline/run.py` (`video-pipeline` branch); both manifest shapes are normalised.
+3. **Sample data** in `src/data/mock/`.
+
+Videos are served in 4 MB range chunks in dev, because browsers allow only 6 connections per server and Compare plays up to 6 videos at once. The backend serves whole files, so the same limit applies there.
+
 | File | Owner | Status |
 |---|---|---|
 | `output/<clip>.manifest.json` | Task 1 | in `CLAUDE.md`; optional fields (`metrics`, `original`, `stats`) proposed |

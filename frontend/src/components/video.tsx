@@ -1,4 +1,5 @@
 // Mai multe videoclipuri care rulează ca unul singur: un video „master” dă timpul, celelalte îl urmează.
+// Un video montat mai târziu (ex. o țară aleasă abia acum) se alătură automat la momentul curent.
 import { useRef, useState, type CSSProperties, type ReactNode, type SyntheticEvent } from "react";
 import { Pause, Play } from "lucide-react";
 
@@ -6,14 +7,24 @@ const DRIFT_SEC = 0.15;
 
 export function useSyncedVideos(master: number) {
   const els = useRef<(HTMLVideoElement | null)[]>([]);
+  const playingRef = useRef(false);
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [failed, setFailed] = useState<Record<number, boolean>>({});
+  const [ready, setReady] = useState<Record<number, boolean>>({});
 
   const all = () => els.current.filter((v): v is HTMLVideoElement => !!v && !Number.isNaN(v.duration));
-  const masterEl = () => els.current[master] ?? all()[0];
+  /** Masterul dă timpul; cât încă se încarcă, îl ține primul video gata. */
+  const masterEl = () => {
+    const m = els.current[master];
+    return m && !Number.isNaN(m.duration) ? m : all()[0];
+  };
 
+  const setPlay = (p: boolean) => {
+    playingRef.current = p;
+    setPlaying(p);
+  };
   const play = () => {
     const m = masterEl();
     if (!m) return;
@@ -21,11 +32,11 @@ export function useSyncedVideos(master: number) {
       v.currentTime = m.currentTime;
       void v.play().catch(() => {});
     }
-    setPlaying(true);
+    setPlay(true);
   };
   const pause = () => {
     all().forEach((v) => v.pause());
-    setPlaying(false);
+    setPlay(false);
   };
   const seek = (t: number) => {
     all().forEach((v) => (v.currentTime = t));
@@ -40,21 +51,27 @@ export function useSyncedVideos(master: number) {
     playsInline: true,
     preload: "auto" as const,
     onLoadedMetadata: (e: SyntheticEvent<HTMLVideoElement>) => {
-      const d = e.currentTarget.duration;
-      setDuration((prev) => prev || d);
+      const el = e.currentTarget;
+      setDuration((prev) => prev || el.duration);
       setFailed((f) => (f[i] ? { ...f, [i]: false } : f)); // sursa s-a schimbat și acum merge
+      const m = masterEl();
+      if (m && m !== el) {
+        el.currentTime = m.currentTime;
+        if (playingRef.current) void el.play().catch(() => {});
+      }
     },
+    onCanPlay: () => setReady((r) => (r[i] ? r : { ...r, [i]: true })),
     onTimeUpdate: (e: SyntheticEvent<HTMLVideoElement>) => {
-      if (i !== master) return;
+      if (e.currentTarget !== masterEl()) return;
       const t = e.currentTarget.currentTime;
       setTime(t);
       for (const v of all()) if (v !== e.currentTarget && Math.abs(v.currentTime - t) > DRIFT_SEC) v.currentTime = t;
     },
-    onEnded: () => i === master && setPlaying(false),
+    onEnded: (e: SyntheticEvent<HTMLVideoElement>) => e.currentTarget === masterEl() && setPlay(false),
     onError: () => setFailed((f) => ({ ...f, [i]: true })),
   });
 
-  return { bind, playing, toggle: () => (playing ? pause() : play()), seek, time, duration, failed };
+  return { bind, playing, toggle: () => (playing ? pause() : play()), seek, time, duration, failed, ready };
 }
 
 export type SyncedVideos = ReturnType<typeof useSyncedVideos>;

@@ -63,7 +63,13 @@ function Footer() {
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-6 gap-y-1 px-4 py-5 text-xs text-muted sm:px-6">
         <span className="font-serif text-sm text-ink">ProDefenders</span>
         <span>ITFest 2026 prototype</span>
-        <span>{data?.source === "live" ? "Videos and data from output/" : "Sample data: the pipeline output is not available yet"}</span>
+        <span>
+          {data?.source === "api"
+            ? "Connected to the ProDefenders API"
+            : data?.source === "live"
+              ? "Videos and data from output/ (API not running)"
+              : "Sample data: no rendered clip found"}
+        </span>
         <span className="ml-auto hidden sm:inline">Keys 1–4 switch tabs</span>
       </div>
     </footer>

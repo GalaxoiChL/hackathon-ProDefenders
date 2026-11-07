@@ -20,20 +20,54 @@ export default function CompareTab() {
   );
 }
 
+const MAX_SIDE_BY_SIDE = 4;
+
 function Grid() {
   const { manifest, ads } = useClip();
-  const group = useSyncedVideos(0);
+  const { region } = useApp();
   const regions = manifest.regions;
-  const cols = regions.length >= 3 ? "lg:grid-cols-3" : "";
+  // cu multe piețe (backend-ul are 15) comparăm doar câteva odată
+  const [picked, setPicked] = useState<string[]>(() => {
+    const codes = regions.map((r) => r.code);
+    if (codes.length <= MAX_SIDE_BY_SIDE) return codes;
+    return [...new Set([region ?? codes[0], ...codes])].slice(0, 3);
+  });
+  const toggle = (code: string) =>
+    setPicked((p) =>
+      p.includes(code) ? (p.length > 1 ? p.filter((c) => c !== code) : p) : p.length >= MAX_SIDE_BY_SIDE ? [...p.slice(1), code] : [...p, code],
+    );
+  const shown = regions.map((r, i) => ({ r, i })).filter(({ r }) => picked.includes(r.code));
+  const group = useSyncedVideos(shown[0]?.i ?? 0);
+  const cols = shown.length === 3 ? "lg:grid-cols-3" : "";
 
   return (
     <>
+      {regions.length > MAX_SIDE_BY_SIDE && (
+        <div className="mb-6">
+          <p className="text-xs uppercase tracking-[0.14em] text-muted">Markets to compare · up to {MAX_SIDE_BY_SIDE}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {regions.map((r) => {
+              const on = picked.includes(r.code);
+              return (
+                <button
+                  key={r.code}
+                  onClick={() => toggle(r.code)}
+                  aria-pressed={on}
+                  className={`border px-3 py-1.5 transition-colors ${on ? "border-ink bg-card" : "border-rule text-muted hover:border-rule-strong"}`}
+                >
+                  <CountryMark code={r.code} label={r.label} muted={!on} />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <div className={`grid gap-6 sm:grid-cols-2 ${cols}`}>
-        {regions.map((r, i) => (
+        {shown.map(({ r, i }) => (
           <figure key={r.code}>
             <figcaption className="mb-2 flex items-baseline justify-between gap-3">
               <CountryMark code={r.code} label={r.label} />
-              <span className="truncate font-serif text-[15px] text-ink-2">{ads?.find((a) => a.id === r.ad_id)?.brand ?? r.ad_id}</span>
+              <span className="truncate font-serif text-[15px] text-ink-2">{(ads?.find((a) => a.id === r.ad_id) ?? (r.ad_id ? undefined : ads?.find((a) => a.region === r.code)))?.brand ?? r.brand ?? r.ad_id}</span>
             </figcaption>
             <div className="relative aspect-video overflow-hidden bg-screen">
               <video {...group.bind(i)} src={assetUrl(r.video)} className="absolute inset-0 h-full w-full object-cover" />
@@ -43,7 +77,7 @@ function Grid() {
         ))}
       </div>
       <div className="mt-2">
-        <Transport group={group} disabled={regions.every((_, i) => group.failed[i])} />
+        <Transport group={group} disabled={shown.every(({ i }) => group.failed[i])} />
       </div>
     </>
   );
@@ -61,13 +95,28 @@ function BeforeAfter() {
     <Section
       title="Before and after"
       aside={
-        <Segmented
-          id="before-after"
-          label="Country"
-          value={after.code}
-          onChange={setCode}
-          options={manifest.regions.map((r) => ({ value: r.code, label: regionName(r.code, r.label) }))}
-        />
+        manifest.regions.length <= 4 ? (
+          <Segmented
+            id="before-after"
+            label="Country"
+            value={after.code}
+            onChange={setCode}
+            options={manifest.regions.map((r) => ({ value: r.code, label: regionName(r.code, r.label) }))}
+          />
+        ) : (
+          <select
+            value={after.code}
+            onChange={(e) => setCode(e.target.value)}
+            aria-label="Country"
+            className="border border-rule-strong bg-card px-3 py-1.5 text-sm text-ink outline-none focus:border-ink"
+          >
+            {manifest.regions.map((r) => (
+              <option key={r.code} value={r.code}>
+                {regionName(r.code, r.label)}
+              </option>
+            ))}
+          </select>
+        )
       }
     >
       {!manifest.original ? (

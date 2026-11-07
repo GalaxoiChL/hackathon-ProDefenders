@@ -10,6 +10,8 @@ const REPO = fileURLToPath(new URL("..", import.meta.url));
 // Folderele din repo pe care frontend-ul le citește direct, fără să copiem videoclipuri.
 const SERVED_DIRS = ["output", "assets", "data"];
 
+const CHUNK_BYTES = 4 * 1024 * 1024;
+
 const MIME: Record<string, string> = {
   ".mp4": "video/mp4",
   ".webm": "video/webm",
@@ -32,7 +34,9 @@ function serveRepoFile(dir: string): Connect.NextHandleFunction {
     const range = /bytes=(\d*)-(\d*)/.exec(req.headers.range ?? "");
     if (range) {
       const start = range[1] ? Number(range[1]) : 0;
-      const end = range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
+      // bucăți de cel mult 4 MB: altfel fiecare video ține ocupată o conexiune până se descarcă tot,
+      // iar browserul are doar 6 per server; Compare cu 5 video-uri rămânea cu unul negru
+      const end = Math.min(range[2] ? Number(range[2]) : size - 1, start + CHUNK_BYTES - 1, size - 1);
       res.writeHead(206, {
         "Content-Type": type,
         "Content-Length": end - start + 1,
@@ -57,7 +61,12 @@ function serveRepoDirs(): Plugin {
   };
 }
 
+// Serverul din backend/ (uvicorn backend.app:app --port 8000). Dacă nu rulează, frontend-ul citește direct fișierele.
+const BACKEND = process.env.BACKEND_URL ?? "http://localhost:8000";
+const proxy = { "/api": { target: BACKEND, changeOrigin: true } };
+
 export default defineConfig({
   plugins: [react(), tailwindcss(), serveRepoDirs()],
-  server: { port: 5173, open: true },
+  server: { port: 5173, open: true, proxy },
+  preview: { proxy },
 });

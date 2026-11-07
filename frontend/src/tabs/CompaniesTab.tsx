@@ -43,7 +43,9 @@ function computeStats(brand: Ad, slots: Slot[], bids: Bid[], results: Record<str
 
 export default function CompaniesTab() {
   const { brands, slots, bids, results } = useMarket();
-  const stats = brands.map((b) => computeStats(b, slots, bids, results)).sort((a, b) => b.spend - a.spend);
+  const stats = brands
+    .map((b) => computeStats(b, slots, bids, results))
+    .sort((a, b) => b.spend - a.spend || b.bids.length - a.bids.length || a.brand.brand.localeCompare(b.brand.brand));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = stats.find((s) => s.brand.id === selectedId) ?? stats[0];
 
@@ -56,7 +58,7 @@ export default function CompaniesTab() {
       />
 
       <div className="grid gap-x-6 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
-        {stats.map((s) => {
+        {stats.filter((s) => s.bids.length > 0).map((s) => {
           const active = s.brand.id === selected?.brand.id;
           return (
             <button

@@ -35,8 +35,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     loadClip(clip).then((d) => {
       if (cancelled) return;
       setData(d);
-      // păstrăm țara aleasă dacă există și în clipul nou
-      setRegion((r) => (r && d.manifest.regions.some((x) => x.code === r) ? r : d.manifest.regions[0]?.code ?? null));
+      // păstrăm țara aleasă dacă există și în clipul nou; altfel cea detectată de backend după IP, apoi prima
+      const has = (code?: string | null) => !!code && d.manifest.regions.some((x) => x.code === code);
+      setRegion((r) => (has(r) ? r : has(d.viewer?.region) ? d.viewer!.region : d.manifest.regions[0]?.code ?? null));
       setLoading(false);
     });
     return () => {

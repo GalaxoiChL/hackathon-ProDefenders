@@ -3,6 +3,7 @@ import { useApp } from "./state";
 import { loadMarket } from "./data/loadMarket";
 import { ineligibility, runAuction, type AuctionResult } from "./data/auction";
 import type { Ad, Bid, Slot } from "./data/types";
+import mockAds from "./data/mock/ads.json";
 
 interface MarketState {
   slots: Slot[];
@@ -20,7 +21,13 @@ interface MarketState {
 const MarketContext = createContext<MarketState | null>(null);
 
 export function MarketProvider({ children }: { children: ReactNode }) {
-  const brands = useApp().data?.ads ?? [];
+  const loaded = useApp().data?.ads;
+  // Ofertele de test folosesc brandurile de test; le păstrăm lângă reclamele reale (din API sau data/ads.json).
+  const brands = useMemo(() => {
+    const byId = new Map<string, Ad>();
+    for (const a of [...(loaded ?? []), ...(mockAds as Ad[])]) if (!byId.has(a.id)) byId.set(a.id, a);
+    return [...byId.values()];
+  }, [loaded]);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [bids, setBids] = useState<Bid[]>([]);
   const [deadlines, setDeadlines] = useState<Record<string, number>>({});

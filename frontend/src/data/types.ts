@@ -8,6 +8,7 @@ export interface RegionMetrics {
   visibility?: number;
   est_impressions?: number;
   est_revenue_eur?: number;
+  est_revenue_usd?: number;
 }
 
 export interface ManifestRegion {
@@ -15,6 +16,10 @@ export interface ManifestRegion {
   label: string;
   video: string;
   ad_id?: string;
+  /** scris de pipeline/run.py */
+  brand?: string;
+  /** imaginea lipită pe panou pentru țara asta (run.py) */
+  creative?: string;
   reason?: string;
   ad_image?: string;
   metrics?: RegionMetrics;
@@ -36,6 +41,8 @@ export interface Manifest {
   ai_view?: string;
   regions: ManifestRegion[];
   original?: string;
+  /** video cu toate țările una lângă alta (run.py) */
+  compare?: string;
   poster?: string;
   duration_sec?: number;
   fps?: number;
@@ -85,14 +92,27 @@ export interface Ad {
   avoid?: string[];
 }
 
+/** Țara privitorului, după geolocația din backend (GET /api/clips/{clip}/play). */
+export interface Viewer {
+  country: string;
+  name?: string;
+  /** versiunea aleasă pentru el */
+  region: RegionCode;
+  /** exact | language | subregion | continent | default */
+  match?: string;
+  /** query | header | cloudflare | ip | default */
+  source?: string;
+}
+
 /** Tot ce știe UI-ul despre un clip, deja normalizat. */
 export interface ClipData {
   manifest: Manifest;
   scene?: Scene;
   surfaces?: Surfaces;
   ads?: Ad[];
-  /** "live" = citit din output/; "mock" = date de test din src/data/mock */
-  source: "live" | "mock";
+  viewer?: Viewer;
+  /** "api" = serverul din backend/; "live" = fișiere din output/; "mock" = date de test din src/data/mock */
+  source: "api" | "live" | "mock";
 }
 
 // Marketplace (încă nu e în CLAUDE.md: data/inventory.json și data/bids.json)

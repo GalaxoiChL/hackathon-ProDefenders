@@ -1,13 +1,15 @@
 import { NavLink } from "react-router-dom";
 import { motion } from "framer-motion";
 import type { TabDef } from "../tabs.config";
+import { useAuth } from "../auth";
 
 export function TopBar({ tabs }: { tabs: TabDef[] }) {
+  const { account } = useAuth();
   return (
     <header className="sticky top-0 z-20 border-b border-rule bg-paper/95 backdrop-blur-sm">
       <div className="mx-auto flex max-w-6xl flex-wrap items-center gap-x-10 gap-y-1 px-4 sm:px-6">
         <NavLink to="/" className="flex items-baseline gap-3 py-4">
-          <span className="font-serif text-xl font-semibold tracking-tight">ProDefenders</span>
+          <span className="font-serif text-xl font-semibold tracking-tight">SwapBoard</span>
           <span className="hidden text-xs text-muted md:inline">In-content advertising, localised</span>
         </NavLink>
         <nav className="no-scrollbar -mb-px flex min-w-0 flex-1 gap-7 overflow-x-auto">
@@ -21,7 +23,14 @@ export function TopBar({ tabs }: { tabs: TabDef[] }) {
             >
               {({ isActive }) => (
                 <>
-                  {t.label}
+                  {t.id === "signin" && account ? (
+                    <span className="inline-flex items-center gap-2">
+                      <span className="size-1.5 rounded-full bg-positive" />
+                      {account.name}
+                    </span>
+                  ) : (
+                    t.label
+                  )}
                   {isActive && (
                     <motion.span
                       layoutId="nav-underline"

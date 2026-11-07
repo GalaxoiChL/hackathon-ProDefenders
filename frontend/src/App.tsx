@@ -3,6 +3,7 @@ import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from "r
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
 import { AppProvider, useApp } from "./state";
 import { MarketProvider } from "./market";
+import { AuthProvider } from "./auth";
 import { visibleTabs, type TabDef } from "./tabs.config";
 import { TopBar } from "./components/TopBar";
 
@@ -11,9 +12,11 @@ export default function App() {
     <MotionConfig reducedMotion="user">
       <AppProvider>
         <MarketProvider>
-          <HashRouter>
-            <Shell />
-          </HashRouter>
+          <AuthProvider>
+            <HashRouter>
+              <Shell />
+            </HashRouter>
+          </AuthProvider>
         </MarketProvider>
       </AppProvider>
     </MotionConfig>

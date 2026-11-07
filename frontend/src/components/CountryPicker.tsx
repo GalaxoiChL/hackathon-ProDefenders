@@ -47,7 +47,7 @@ export function Dropdown({
 
   return (
     <div ref={root} className="relative">
-      <button
+      <button type="button"
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="listbox"
         aria-expanded={open}
@@ -76,7 +76,7 @@ export function Dropdown({
               const selected = o.value === current.value;
               return (
                 <li key={o.value} role="option" aria-selected={selected}>
-                  <button
+                  <button type="button"
                     onClick={() => {
                       onChange(o.value);
                       setOpen(false);

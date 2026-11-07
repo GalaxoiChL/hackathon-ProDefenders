@@ -337,3 +337,71 @@ def test_all_overpass_down_is_clear_error(tmp_path):
 
     with pytest.raises(RuntimeError, match="all Overpass servers failed"):
         Sources(Down()).osm("Berlin", "DE", "food", 5)
+
+
+class _Status(Exception):
+    """Like httpx.HTTPStatusError: carries the response with its status code."""
+    def __init__(self, code):
+        super().__init__(f"HTTP {code}")
+        self.response = type("R", (), {"status_code": code})()
+
+
+class _Clock:
+    def __init__(self):
+        self.t, self.sleeps = 0.0, []
+
+    def __call__(self):
+        return self.t
+
+    def sleep(self, s):
+        self.sleeps.append(s)
+        self.t += s
+
+
+def test_busy_servers_are_retried_after_a_pause(tmp_path):
+    from backend.outreach.sources import Sources
+
+    class BusyOnce(FakeHttp):
+        posts = 0
+
+        def post_json(self, url, data, timeout=None):
+            self.posts += 1
+            if self.posts <= 3:                   # first round: every mirror says "no free slot"
+                raise _Status(429 if "overpass-api" in url else 504)
+            return OVERPASS_DATA
+
+    clock = _Clock()
+    http = BusyOnce()
+    found = Sources(http, sleep=clock.sleep, clock=clock).osm("Berlin", "DE", "food", 5)
+    assert len(found) == 5 and len(clock.sleeps) == 1 and http.posts == 4   # one pause, then it answered
+
+
+def test_busy_retries_stop_at_the_budget():
+    from backend.outreach.sources import Sources
+
+    class AlwaysBusy(FakeHttp):
+        def post_json(self, url, data, timeout=None):
+            raise _Status(429)
+
+    clock = _Clock()
+    with pytest.raises(RuntimeError, match=r"HTTP 429.*try again in a minute"):
+        Sources(AlwaysBusy(), sleep=clock.sleep, clock=clock, retry_budget_s=60).osm("Berlin", "DE", "food", 5)
+    assert clock.t <= 60
+
+
+def test_stale_cache_used_when_every_server_fails(tmp_path):
+    import os
+    from backend.outreach.sources import Sources
+
+    cache = tmp_path / "cache"
+    first = Sources(FakeHttp(), cache_dir=cache).osm("Berlin", "DE", "food", 5)
+    for f in cache.iterdir():                              # make the cached answer 30 days old
+        old = f.stat().st_mtime - 30 * 24 * 3600
+        os.utime(f, (old, old))
+
+    class Down(FakeHttp):
+        def post_json(self, url, data, timeout=None):
+            raise TimeoutError("busy")
+
+    again = Sources(Down(), cache_dir=cache).osm("Berlin", "DE", "food", 5)
+    assert [c.name for c in again] == [c.name for c in first]

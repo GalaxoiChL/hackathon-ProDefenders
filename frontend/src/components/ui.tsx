@@ -69,7 +69,7 @@ export function Segmented<T extends string>({
       {options.map((o) => {
         const active = o.value === value;
         return (
-          <button
+          <button type="button"
             key={o.value}
             role="radio"
             aria-checked={active}
@@ -183,7 +183,7 @@ export function AdCreative({ ad, size = "md" }: { ad: Ad; size?: "sm" | "md" }) 
 
 export function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
-    <button
+    <button type="button"
       role="switch"
       aria-checked={checked}
       disabled={disabled}

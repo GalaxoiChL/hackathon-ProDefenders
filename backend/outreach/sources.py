@@ -21,6 +21,12 @@ OVERPASS = "https://overpass-api.de/api/interpreter"
 OVERPASS_MIRRORS = (OVERPASS, "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
                     "https://overpass.kumi.systems/api/interpreter")
 CACHE_TTL = 7 * 24 * 3600
+# "busy" answers: the server is at capacity or our IP has no free slot right now (overpass-api.de gives
+# each IP only a couple of parallel queries). They come back within a second, so waiting and asking
+# again usually works, while trying each mirror once made a short spike fail the whole search.
+BUSY_STATUS = {429, 502, 503, 504}
+RETRY_BUDGET_S = 100      # total time one search may spend on Overpass before giving up
+RETRY_PAUSE_S = 6
 BRAVE = "https://api.search.brave.com/res/v1/web/search"
 
 # ad category -> OSM tag filters
@@ -73,11 +79,16 @@ def is_aggregator(url: str | None) -> bool:
 
 class Sources:
     def __init__(self, http: Http, brave_api_key: str = "", cache_dir: Path | None = None,
-                 mirrors: tuple[str, ...] = OVERPASS_MIRRORS):
+                 mirrors: tuple[str, ...] = OVERPASS_MIRRORS, retry_budget_s: float = RETRY_BUDGET_S,
+                 retry_pause_s: float = RETRY_PAUSE_S, sleep=time.sleep, clock=time.monotonic):
         self.http = http
         self.brave_key = brave_api_key
         self.cache_dir = cache_dir
         self.mirrors = list(mirrors)
+        self.retry_budget_s = retry_budget_s
+        self.retry_pause_s = retry_pause_s
+        self._sleep = sleep
+        self._clock = clock
         self._geo_cache: dict[str, tuple[float, float]] = {}
         self._last_nominatim = 0.0
 
@@ -98,29 +109,51 @@ class Sources:
         return lat, lon
 
     def _overpass(self, query: str) -> dict:
-        errors = []
-        for url in list(self.mirrors):
-            try:
-                data = self.http.post_json(url, {"data": query}, timeout=40)  # often takes 10-30 s
-                if not isinstance(data, dict) or "elements" not in data:
-                    raise ValueError("unexpected answer")
-            except Exception as e:
-                errors.append(f"{urlparse(url).netloc}: {type(e).__name__}")
-                continue
-            if url != self.mirrors[0]:           # remember the server that answered
-                self.mirrors.remove(url)
-                self.mirrors.insert(0, url)
-            return data
-        raise RuntimeError("all Overpass servers failed (" + ", ".join(errors) + ")")
+        """Ask the mirrors in turn; while some answered "busy", pause and go round again, within a budget."""
+        deadline = self._clock() + self.retry_budget_s
+        errors: list[str] = []
+        while True:
+            busy = False
+            for url in list(self.mirrors):
+                left = deadline - self._clock()
+                if left < 5:
+                    break
+                host = urlparse(url).netloc
+                try:
+                    # often takes 10-30 s on the public servers
+                    data = self.http.post_json(url, {"data": query}, timeout=min(40.0, left))
+                    if not isinstance(data, dict) or "elements" not in data:
+                        raise ValueError("unexpected answer")
+                except Exception as e:
+                    status = getattr(getattr(e, "response", None), "status_code", None)
+                    busy = busy or status in BUSY_STATUS
+                    errors.append(f"{host}: HTTP {status}" if status else f"{host}: {type(e).__name__}")
+                    continue
+                if url != self.mirrors[0]:           # remember the server that answered
+                    self.mirrors.remove(url)
+                    self.mirrors.insert(0, url)
+                return data
+            # only "busy" is worth waiting for; timeouts and bad answers already used their time
+            if not busy or deadline - self._clock() < self.retry_pause_s + 10:
+                break
+            self._sleep(self.retry_pause_s)
+        raise RuntimeError("all Overpass servers failed (" + ", ".join(errors[-6:]) + "). "
+                           "The public OpenStreetMap servers are overloaded; try again in a minute.")
 
     def _cached(self, key: str, fn):
-        """Same search within a week -> instant answer (and the demo works if Overpass is down)."""
+        """Same search within a week -> instant answer. If every server is down, an older answer
+        for the same search is still better than none (the demo must not depend on Overpass)."""
         if not self.cache_dir:
             return fn()
         path = self.cache_dir / (hashlib.sha1(key.encode()).hexdigest()[:16] + ".json")
         if path.is_file() and time.time() - path.stat().st_mtime < CACHE_TTL:
             return json.loads(path.read_text(encoding="utf-8"))
-        data = fn()
+        try:
+            data = fn()
+        except RuntimeError:
+            if path.is_file():
+                return json.loads(path.read_text(encoding="utf-8"))   # stale, but real results
+            raise
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(data), encoding="utf-8")
         return data

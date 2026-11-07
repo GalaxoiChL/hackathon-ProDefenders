@@ -66,7 +66,7 @@ export default function CompaniesTab() {
         {stats.filter((s) => s.bids.length > 0).map((s) => {
           const active = s.brand.id === selected?.brand.id;
           return (
-            <button
+            <button type="button"
               key={s.brand.id}
               onClick={() => setSelectedId(s.brand.id)}
               aria-pressed={active}

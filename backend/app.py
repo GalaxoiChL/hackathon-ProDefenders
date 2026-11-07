@@ -66,7 +66,7 @@ def create_app(settings: Settings | None = None, geo: GeoResolver | None = None)
     def health():
         ads, ads_source = store.ads()
         return {"status": "ok", "clips": store.list_clips(), "ads": len(ads), "ads_source": ads_source,
-                "countries": len(regions.countries()),
+                "countries": len(regions.countries()), "markets": list(settings.markets),
                 "output_dir": settings.output_dir.is_dir(), "default_region": settings.default_region,
                 "geo_enabled": settings.geo_enabled,
                 "jobs_running": sum(j.status == "running" for j in jobs.jobs.values())}
@@ -78,6 +78,18 @@ def create_app(settings: Settings | None = None, geo: GeoResolver | None = None)
                        continent: str | None = Query(None, description="ex: Europe / Europa")):
         return regions.search(q, continent)
 
+    @app.get("/api/markets", tags=["countries"],
+             summary="Piețele demo (US, RO, JP + 12 din Europa): opțiunile din selectorul de țară")
+    def list_markets():
+        ads = store.ads()[0]
+        out = []
+        for code in settings.markets:
+            c = regions.get(code)
+            own = [a for a in ads if a.region.upper() == code]
+            out.append({**c, "default": code == settings.default_region,
+                        "ads": len(own), "brand": own[0].brand if own else None})
+        return out
+
     @app.get("/api/countries/{code}", tags=["countries"])
     def get_country(code: str):
         return country_or_400(code)
@@ -88,7 +100,9 @@ def create_app(settings: Settings | None = None, geo: GeoResolver | None = None)
         if country:
             country_or_400(country)
         g = await geo.resolve(request, country)
-        return {**g, "details": regions.get(g["country"])}
+        market, match = regions.resolve(g["country"], list(settings.markets), settings.default_region)
+        return {**g, "details": regions.get(g["country"]), "market": market, "market_match": match,
+                "market_details": regions.get(market)}
 
     # ---------------- clips ----------------
     @app.get("/api/clips", tags=["clips"])
@@ -127,6 +141,8 @@ def create_app(settings: Settings | None = None, geo: GeoResolver | None = None)
         viewer = regions.get(g["country"]) or {}
         return {"clip": clip,
                 "viewer": {**g, "name": viewer.get("name"), "flag": viewer.get("flag"),
+                           "market": regions.resolve(g["country"], list(settings.markets),
+                                                     settings.default_region)[0],
                            "region": chosen, "match": match, "match_label": regions.MATCH_LABELS[match],
                            "exact_match": match == "exact"},
                 "current": current, "ad": ad, "ai_view_url": m["ai_view_url"], "regions": m["regions"]}

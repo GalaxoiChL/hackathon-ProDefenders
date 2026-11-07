@@ -48,6 +48,43 @@ SAMPLE_ADS: list[dict] = [
 ]
 
 
+def _ad(cc: str, slug: str, brand: str, category: str, headline: str, price: str,
+        bg: str, fg: str, accent: str, fits: list[str]) -> dict:
+    return {"id": f"{cc.lower()}-{slug}", "region": cc, "brand": brand, "category": category,
+            "headline": headline, "price": price, "colors": {"bg": bg, "fg": fg, "accent": accent},
+            "product_image": f"data/products/{cc.lower()}-{slug}.png",
+            "fits": fits, "avoid": ["violence", "accident", "sad"]}
+
+
+# one per European demo market, headline in the local language, price in the local currency
+SAMPLE_ADS += [
+    _ad("GB", "crumpet-and-co", "Crumpet & Co", "food", "A proper breakfast, round the corner", "£3.50",
+        "#0B3D2E", "#FFFFFF", "#E9C46A", ["morning", "rain", "cold", "urban"]),
+    _ad("DE", "brezelhaus", "Brezelhaus", "food", "Frisch gebacken, jeden Morgen", "2,49 €",
+        "#2B2D42", "#FFFFFF", "#F4A300", ["morning", "day", "urban"]),
+    _ad("FR", "cafe-lumiere", "Café Lumière", "drinks", "Le café parfait, au coin de la rue", "2,90 €",
+        "#3D2B1F", "#FFF8E7", "#D4A373", ["morning", "day", "urban", "calm"]),
+    _ad("IT", "gelato-nonna-rosa", "Gelato Nonna Rosa", "food", "Il gelato come una volta", "2,50 €",
+        "#F7EDE2", "#5E2B1E", "#E76F51", ["day", "sunny", "warm", "urban"]),
+    _ad("ES", "churros-sol", "Churros Sol", "food", "Calentitos, a la vuelta de la esquina", "2,95 €",
+        "#C1121F", "#FFFFFF", "#FFD60A", ["evening", "night", "busy", "urban"]),
+    _ad("NL", "stroopwafel-molen", "Stroopwafel Molen", "food", "Vers van de molen, elke dag", "€ 1,99",
+        "#F28C28", "#1B1B1B", "#FFFFFF", ["day", "cold", "rain", "urban"]),
+    _ad("BE", "frit-royale", "Frit'Royale", "food", "Echte Belgische frieten", "3,50 €",
+        "#FFD100", "#1B1B1B", "#E10600", ["evening", "night", "busy", "urban"]),
+    _ad("PL", "pierogi-babci", "Pierogi Babci", "food", "Jak u babci w kuchni", "14,99 zł",
+        "#FFFFFF", "#B5121B", "#B5121B", ["evening", "cold", "urban"]),
+    _ad("SE", "kanelbulle-kompaniet", "Kanelbulle Kompaniet", "food", "Fika på riktigt", "35 kr",
+        "#004B87", "#FFFFFF", "#FECC02", ["morning", "day", "cold", "calm"]),
+    _ad("AT", "wiener-kipferl", "Wiener Kipferl", "food", "Ein Stück Wien zum Mitnehmen", "1,90 €",
+        "#ED2939", "#FFFFFF", "#FFFFFF", ["morning", "day", "cold", "urban"]),
+    _ad("PT", "pasteis-do-tejo", "Pastéis do Tejo", "food", "O pastel de nata da tua rua", "1,20 €",
+        "#1D3557", "#F1FAEE", "#F4D35E", ["morning", "day", "sunny", "urban"]),
+    _ad("GR", "souvlaki-thalassa", "Souvlaki Thalassa", "food", "Το σουβλάκι της γειτονιάς σου", "3,50 €",
+        "#0D5EAF", "#FFFFFF", "#FFFFFF", ["evening", "warm", "busy", "urban"]),
+]
+
+
 class NotFound(Exception):
     pass
 

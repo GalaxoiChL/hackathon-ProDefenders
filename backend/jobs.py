@@ -107,7 +107,7 @@ class JobRunner:
                     raise NotFound(f"ad image not found for {code}: {rel}")
                 ads[code.upper()] = p
             return ads
-        # Any country with an ad image gets a version. Generated (task 2) beats placeholder.
+        # Every market with an ad image gets a version. Generated (task 2) beats placeholder.
         # Lower priority first, so better sources overwrite.
         ads: dict[str, Path] = {}
         sources = [(self.s.assets_dir / "ads", ("{cc}.png", "{cc}_portrait.png")),
@@ -121,9 +121,12 @@ class JobRunner:
                     stem = p.name[len(prefix):len(p.name) - len(suffix)] if p.name.endswith(suffix) else ""
                     if len(stem) == 2 and regions.is_country(stem):
                         ads[stem.upper()] = p
+        # by default render only the demo markets (a stray PNG must not add a 16th version)
+        ads = {cc: p for cc, p in ads.items() if cc in self.s.markets}
         if not ads:
-            raise NotFound("no ad images found (assets/generated/<clip>/<cc>.png or assets/ads/<cc>.png)")
-        return dict(sorted(ads.items()))
+            raise NotFound("no ad images for the demo markets "
+                           "(assets/generated/<clip>/<cc>.png or assets/ads/<cc>.png)")
+        return {cc: ads[cc] for cc in self.s.markets if cc in ads}  # market order: US, RO, JP, ...
 
     def build(self, req: JobRequest) -> Job:
         clip = check_clip(req.clip)

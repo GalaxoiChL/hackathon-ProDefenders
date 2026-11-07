@@ -11,6 +11,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# Demo markets: the countries viewers can pick, and that IP geolocation maps everyone onto.
+DEFAULT_MARKETS = ("US", "RO", "JP",
+                   "GB", "DE", "FR", "IT", "ES", "NL", "BE", "PL", "SE", "AT", "PT", "GR")
+
 
 def load_dotenv(path: Path) -> None:
     """Minimal `.env` loader (KEY=value lines); real environment variables win."""
@@ -34,6 +38,7 @@ def _bool(value: str | None, default: bool) -> bool:
 class Settings:
     root: Path = ROOT
     default_region: str = "RO"
+    markets: tuple[str, ...] = DEFAULT_MARKETS
     # Free IP geolocation, no key. {ip} is replaced with the viewer's IP.
     geo_url: str = "http://ip-api.com/json/{ip}?fields=status,countryCode"
     geo_enabled: bool = True
@@ -46,6 +51,14 @@ class Settings:
     manual_hours_per_placement: float = 3.0
     editor_hourly_rate: float = 40.0
     extra: dict = field(default_factory=dict)
+
+    def __post_init__(self):
+        from . import regions  # noqa: PLC0415  (avoid import cycle at module load)
+        bad = [m for m in self.markets if not regions.is_country(m)]
+        if bad:
+            raise ValueError(f"MARKETS contains unknown country codes: {bad}")
+        if self.default_region not in self.markets:
+            raise ValueError(f"DEFAULT_REGION {self.default_region} must be one of MARKETS")
 
     @property
     def output_dir(self) -> Path:
@@ -72,10 +85,12 @@ class Settings:
         root = root or ROOT
         load_dotenv(root / ".env")
         env = os.environ
+        markets = tuple(m.strip().upper() for m in env.get("MARKETS", "").split(",") if m.strip())
         origins = tuple(o.strip() for o in env.get("CORS_ORIGINS", "*").split(",") if o.strip())
         return cls(
             root=root,
             default_region=env.get("DEFAULT_REGION", "RO").upper(),
+            markets=markets or DEFAULT_MARKETS,
             geo_url=env.get("GEO_URL", cls.geo_url),
             geo_enabled=_bool(env.get("GEO_ENABLED"), True),
             geo_timeout=float(env.get("GEO_TIMEOUT", cls.geo_timeout)),

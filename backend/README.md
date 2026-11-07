@@ -22,8 +22,9 @@ Teste: `.venv/Scripts/python -m pytest -q tests`
 |---|---|---|
 | GET | `/api/health` | starea serverului, clipurile găsite, sursa reclamelor |
 | GET | `/api/countries?q=&continent=` | **toate cele 250 de țări** (ISO 3166-1): nume RO/EN, steag, monedă, limbă, continent, CPM, pentru selector |
+| GET | `/api/markets` | **cele 15 piețe demo** (US, RO, JP + 12 din Europa), cu brandul reclamei: opțiunile din selector |
 | GET | `/api/countries/{code}` | o singură țară |
-| GET | `/api/geo?country=` | țara privitorului, cu toate detaliile |
+| GET | `/api/geo?country=` | țara privitorului + piața demo pe care e mapată (`market`, `market_match`) |
 | GET | `/api/clips` | lista clipurilor randate |
 | GET | `/api/clips/{clip}` | `manifest.json` + `video_url` / `ai_view_url` gata de pus în `<video>` |
 | GET | `/api/clips/{clip}/play?country=` | **versiunea pentru privitorul ăsta** + reclama + toate regiunile |
@@ -52,6 +53,21 @@ Câștigă primul care răspunde:
 
 Un cod necunoscut (de ex. `ZZ`) dat prin `?country=` întoarce eroarea 400. Dacă vine prin header, e ignorat.
 
+## Piețele demo (15)
+
+| | Piețe |
+|---|---|
+| implicit | **RO** |
+| în afara Europei | **US**, **JP** |
+| Europa | **GB, DE, FR, IT, ES, NL, BE, PL, SE, AT, PT, GR** |
+
+Le schimbi cu `MARKETS=...` în `.env`. `DEFAULT_REGION` trebuie să fie una dintre ele, altfel serverul nu pornește și spune de ce.
+
+- Selectorul din frontend ia opțiunile din `/api/markets`.
+- Geolocația IP mapează **orice** țară pe cea mai apropiată piață, după aceleași reguli ca mai jos. De exemplu CH → DE, IE → GB, MD → RO, BR → PT, CN → JP, CZ → RO.
+- Fiecare piață are o reclamă exemplu cu brand inventat, text în limba locală și preț în moneda locală (`backend/store.py`). Are și imagini placeholder în `assets/ads/<cc>.png` și `<cc>_portrait.png`, desenate cu `python backend/tools/make_market_ads.py`.
+- Jobul randează implicit **câte o versiune pentru fiecare piață care are o imagine**, deci până la 15. Pentru altă țară, trimite explicit `"ads": {"BR": "cale/imagine.png"}`.
+
 ## Orice țară, orice versiune
 
 O „regiune” e pur și simplu țara pentru care s-a randat clipul (`output/<clip>_<cc>.mp4`). Orice țară poate avea versiunea ei: pui imaginea reclamei în `assets/generated/<clip>/fr.png` (sau `assets/ads/fr.png`), iar jobul randează automat și versiunea FR.
@@ -74,8 +90,8 @@ Datele țărilor sunt în `backend/countries.json` (nume în română din CLDR, 
 |---|---|
 | `output/<clip>.manifest.json` | îl construiește din fișierele `output/<clip>_<xx>.mp4` existente |
 | `<clip>.surfaces.json` | folosește colțurile marcate manual în `assets/clips/<clip>.corners.json` |
-| `data/ads.json` | folosește 3 reclame exemplu (Pizza Bunicii, Burger Bros, Sakura Ramen) |
-| PNG-urile generate (task 2) | jobul folosește `assets/ads/<xx>_portrait.png` |
+| `data/ads.json` | folosește 15 reclame exemplu, câte una pe piață (Pizza Bunicii, Burger Bros, Sakura Ramen, Brezelhaus, Café Lumière…) |
+| PNG-urile generate (task 2) | jobul folosește `assets/ads/<xx>_portrait.png` (există pentru toate cele 15 piețe) |
 | internet (geolocație) | regiunea implicită |
 
 ## Configurare (`.env`, opțional)

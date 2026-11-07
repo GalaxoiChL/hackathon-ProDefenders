@@ -173,6 +173,37 @@ def test_unknown_country_is_400(client):
     assert client.get("/api/countries/QQ").status_code == 400
 
 
+def test_markets(client):
+    ms = client.get("/api/markets").json()
+    codes = [m["code"] for m in ms]
+    assert codes[:3] == ["US", "RO", "JP"] and len(codes) == 15
+    assert {m["continent"] for m in ms[3:]} == {"Europe"}
+    assert all(m["ads"] >= 1 and m["brand"] for m in ms)        # every market has a sample ad
+    assert [m["code"] for m in ms if m["default"]] == ["RO"]
+
+
+def test_geo_maps_any_country_to_a_market(client):
+    cases = {"DE": ("DE", "exact"), "CH": ("DE", "language"), "MD": ("RO", "language"),
+             "IE": ("GB", "language"), "BR": ("PT", "language"), "CA": ("US", "language"),
+             "CZ": ("RO", "subregion"), "CN": ("JP", "subregion"), "NG": ("US", "language"),
+             "EG": ("RO", "default")}
+    for country, (market, match) in cases.items():
+        g = client.get(f"/api/geo?country={country}").json()
+        assert (g["market"], g["market_match"]) == (market, match), country
+
+
+def test_play_reports_market(client):
+    v = client.get("/api/clips/melbourne/play?country=CH").json()["viewer"]
+    assert v["market"] == "DE" and v["region"] == "RO"     # DE not rendered yet: nearest rendered is RO
+
+
+def test_markets_config_validation(tmp_path):
+    with pytest.raises(ValueError):
+        Settings(root=tmp_path, markets=("RO", "ZZ"))
+    with pytest.raises(ValueError):
+        Settings(root=tmp_path, markets=("US", "JP"), default_region="RO")
+
+
 def test_countries_endpoint(client):
     all_ = client.get("/api/countries").json()
     assert len(all_) >= 249
@@ -308,12 +339,12 @@ def test_job_runs_and_writes_manifest(job_root):
     settings = Settings(root=job_root, python=sys.executable)
     runner = JobRunner(settings, Store(settings))
     job = runner.build(JobRequest(clip="melbourne"))
-    assert job.regions == ["JP", "RO", "US"]
+    assert job.regions == ["US", "RO", "JP"]          # market order
     runner.run(job)
     assert job.status == "done", (job.error, list(job.log))
     assert job.frames_done == 90
     m = json.loads((job_root / "output/melbourne.manifest.json").read_text(encoding="utf-8"))
-    assert [r["code"] for r in m["regions"]] == ["JP", "RO", "US"]
+    assert [r["code"] for r in m["regions"]] == ["US", "RO", "JP"]
     assert m["regions"][1]["video"] == "output/melbourne_ro.mp4"
     assert m["ai_view"] == "output/melbourne_ai_view.mp4"
     assert m["stats"]["frames"] == 90 and m["stats"]["lost_frames"] == 9
@@ -326,19 +357,27 @@ def test_job_prefers_generated_ads(job_root):
     assert any("generated" in a and a.startswith("ro=") for a in job.command)
 
 
-def test_job_any_country(job_root):
+def test_job_renders_markets_only(job_root):
     write(job_root / "assets/ads/fr.png", b"png")
-    write(job_root / "assets/generated/melbourne/br.png", b"png")
-    write(job_root / "assets/ads/zz.png", b"png")          # not a country: ignored
+    write(job_root / "assets/generated/melbourne/de.png", b"png")
+    write(job_root / "assets/generated/melbourne/br.png", b"png")   # country, but not a market: skipped
+    write(job_root / "assets/ads/zz.png", b"png")                   # not a country: ignored
     settings = Settings(root=job_root, python=sys.executable)
     runner = JobRunner(settings, Store(settings))
     job = runner.build(JobRequest(clip="melbourne"))
-    assert job.regions == ["BR", "FR", "JP", "RO", "US"]
+    assert job.regions == ["US", "RO", "JP", "DE", "FR"]
     runner.run(job)
     assert job.status == "done", job.error
     m = json.loads((job_root / "output/melbourne.manifest.json").read_text(encoding="utf-8"))
     fr = next(r for r in m["regions"] if r["code"] == "FR")
     assert fr["label"] == "Franța" and fr["video"] == "output/melbourne_fr.mp4"
+
+
+def test_job_explicit_ads_any_country(job_root):
+    settings = Settings(root=job_root)
+    job = JobRunner(settings, Store(settings)).build(
+        JobRequest(clip="melbourne", ads={"br": "assets/ads/ro_portrait.png"}))
+    assert job.regions == ["BR"]
 
 
 def test_job_unknown_country_is_400(job_root):

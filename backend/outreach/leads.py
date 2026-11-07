@@ -35,6 +35,12 @@ class Outreach:
         self.s, self.store, self.o, self.db = settings, store, os_, db
         self.sources, self.crawler, self.llm, self.bids, self.mailer = sources, crawler, llm, bids, mailer
         self._threads: dict[int, threading.Thread] = {}
+        self._create_lock = threading.Lock()
+        # searches run in threads of this process: any still "queued"/"running" in the database were cut
+        # off when the server stopped, and would otherwise show "Searching" (and be polled) forever
+        self.db.execute("UPDATE campaigns SET status='failed', finished=?, error=? "
+                        "WHERE status IN ('queued', 'running')",
+                        (time.time(), "interrupted: the server stopped before this search finished; start it again"))
 
     # ---------- AI qualification ----------
     def qualify(self, c: Candidate, wanted: str, market: str, scene: str, site_text: str) -> dict:
@@ -72,14 +78,21 @@ class Outreach:
             raise BadRequest(f"category must be one of {sorted(CATEGORY_TAGS) + ['any']}")
         clip = clip or (self.store.list_clips() or ["demo"])[0]
         city = city or MARKET_CITIES.get(market) or regions.label(market)
-        cid = self.db.insert("campaigns", {"market": market, "city": city, "category": category, "clip": clip,
-                                           "query": json.dumps({"limit": limit, "min_score": min_score,
-                                                                "include_personal": include_personal,
-                                                                "include_chains": include_chains}),
-                                           "status": "queued", "created": time.time()})
-        t = threading.Thread(target=self.run, args=(cid,), daemon=True, name=f"campaign-{cid}")
-        self._threads[cid] = t
-        t.start()
+        query = json.dumps({"limit": limit, "min_score": min_score, "include_personal": include_personal,
+                            "include_chains": include_chains})
+        with self._create_lock:
+            # the same search is already running (double click, a form submitted twice): don't start a
+            # second copy, which would hit OpenStreetMap and the AI twice and draft duplicate emails
+            same = self.db.one("SELECT id FROM campaigns WHERE market=? AND city=? AND category=? AND clip=? "
+                               "AND query=? AND status IN ('queued', 'running') ORDER BY id DESC LIMIT 1",
+                               (market, city, category, clip, query))
+            if same and (t := self._threads.get(same["id"])) and t.is_alive():
+                return self.campaign(same["id"])
+            cid = self.db.insert("campaigns", {"market": market, "city": city, "category": category, "clip": clip,
+                                               "query": query, "status": "queued", "created": time.time()})
+            t = threading.Thread(target=self.run, args=(cid,), daemon=True, name=f"campaign-{cid}")
+            self._threads[cid] = t
+            t.start()
         return self.campaign(cid)
 
     def run(self, cid: int) -> None:

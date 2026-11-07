@@ -48,11 +48,24 @@ def ensure_env(pipeline: bool) -> None:
     if STAMP.is_file() and STAMP.read_text(encoding="utf-8") == want:
         return
     print("installing " + ", ".join(f.relative_to(REPO).as_posix() for f in files) + " ...", flush=True)
-    cmd = [str(PY), "-m", "pip", "install", "--disable-pip-version-check", "-q"]
+    pip = [str(PY), "-m", "pip", "--disable-pip-version-check"]
+    cmd = pip + ["install", "-q"]
     for f in files:
         cmd += ["-r", str(f)]
     subprocess.run(cmd, check=True)
+    drop_conflicting_opencv(pip)
     STAMP.write_text(want, encoding="utf-8")
+
+
+def drop_conflicting_opencv(pip: list[str]) -> None:
+    """opencv-python and opencv-python-headless both install the `cv2` module: with both in one venv,
+    removing or upgrading either breaks cv2. We use opencv-python (older venvs have the headless one)."""
+    if subprocess.run(pip + ["show", "-q", "opencv-python-headless"], capture_output=True).returncode != 0:
+        return
+    print("replacing opencv-python-headless with opencv-python ...", flush=True)
+    subprocess.run(pip + ["uninstall", "-y", "-q", "opencv-python-headless"], check=True)
+    # the uninstall deleted the shared cv2 files: put opencv-python's back
+    subprocess.run(pip + ["install", "-q", "--force-reinstall", "--no-deps", "opencv-python"], check=True)
 
 
 def main() -> None:

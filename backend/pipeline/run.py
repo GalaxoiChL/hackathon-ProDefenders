@@ -111,7 +111,7 @@ def main() -> None:
                     help="skip AI generative expand (Stable Diffusion); use the smart crop only")
     ap.add_argument("--max-frames", type=int, default=0)
     ap.add_argument("--no-compare", action="store_true", help="skip the side-by-side video")
-    ap.add_argument("--no-publish", action="store_true", help="don't copy the result to demo/media/")
+    ap.add_argument("--no-publish", action="store_true", help="don't copy the result to frontend/demo/media/")
     args = ap.parse_args()
 
     video = args.video if args.video.is_absolute() else (ROOT / args.video)
@@ -214,7 +214,7 @@ def main() -> None:
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
     print(f"wrote {rel(manifest_path)}")
 
-    # 5. copy to demo/media/ (Git LFS): after commit + push the whole team sees it in the site
+    # 5. copy to frontend/demo/media/ (Git LFS): after commit + push the whole team sees it in the site
     if placed and not args.no_publish:
         run([PY, "pipeline/publish_media.py", clip])
 

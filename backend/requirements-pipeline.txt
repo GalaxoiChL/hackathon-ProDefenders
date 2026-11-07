@@ -1,6 +1,12 @@
+# AI video pipeline (python backend/start.py --pipeline). Large: pulls PyTorch.
+# For the GPU (YOLO, SAM 2, Stable Diffusion) install the CUDA build of torch afterwards, e.g.
+#   backend/.venv/Scripts/python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
 opencv-python
 numpy
 ultralytics
 imageio-ffmpeg
 pillow
 transformers
+# Stable Diffusion inpainting (pipeline/gen_extend.py); without it run.py falls back to the smart crop
+diffusers
+accelerate

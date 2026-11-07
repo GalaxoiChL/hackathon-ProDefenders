@@ -7,8 +7,13 @@ from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+
+# the site's icon (also inline in frontend/index.html): red square with an "S"
+FAVICON_SVG = ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' "
+               "fill='#C81E23'/><text x='16' y='23' font-family='Georgia,serif' font-size='20' font-weight='600' "
+               "fill='white' text-anchor='middle'>S</text></svg>")
 
 from . import regions
 from .config import Settings
@@ -198,10 +203,29 @@ def create_app(settings: Settings | None = None, geo: GeoResolver | None = None,
     app.include_router(router)
 
     # ---------------- files ----------------
+    # Some browsers ask for /favicon.ico whatever the page declares: same icon as frontend/index.html.
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon():
+        return Response(FAVICON_SVG, media_type="image/svg+xml",
+                        headers={"Cache-Control": "public, max-age=86400"})
+
+    # The site asks for output/index.json to list rendered clips; answer from the store (JSON, not 404).
+    @app.get("/output/index.json", include_in_schema=False)
+    def output_index():
+        return {"clips": store.list_clips()}
+
     # Starlette's FileResponse answers Range requests, so <video> seeking works.
     app.mount("/output", StaticFiles(directory=settings.output_dir, check_dir=False), name="output")
-    app.mount("/assets", StaticFiles(directory=settings.assets_dir, check_dir=False), name="assets")
+    # /assets is shared by backend/assets (clips, ads) and the built site's JS/CSS (frontend/dist/assets,
+    # Vite's default folder). Without the build folder the page loads blank: look there first.
+    assets = StaticFiles(directory=settings.assets_dir, check_dir=False)
+    built_assets = settings.frontend_dir / "assets"
+    if (settings.frontend_dir / "index.html").is_file() and built_assets.is_dir():
+        assets.all_directories.insert(0, built_assets)
+    app.mount("/assets", assets, name="assets")
     app.mount("/data", StaticFiles(directory=settings.data_dir, check_dir=False), name="data")
+    # team clips (catalog.js, index.json, videos): the site loads them at /media, as with the Vite server
+    app.mount("/media", StaticFiles(directory=settings.media_dir, check_dir=False), name="media")
 
     index = settings.frontend_dir / "index.html"
     if index.is_file() and "/src/main" not in index.read_text(encoding="utf-8", errors="ignore"):

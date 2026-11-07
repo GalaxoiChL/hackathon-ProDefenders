@@ -179,7 +179,7 @@ Folosește automat ce produc celelalte task-uri, dacă există, altfel are fallb
 
 Clipul de test nu e în git (prea mare). Se descarcă de pe [Pexels](https://www.pexels.com/video/people-walking-down-a-city-street-with-a-red-jacket-27817664/) și se salvează ca `backend/assets/clips/melbourne.mp4`.
 
-Scripturile de mai jos sunt în `backend/pipeline/`:
+Scripturile de mai jos sunt în `backend/pipeline/`. Exemplele din comentariile lor (`python pipeline/run.py assets/clips/...`) se rulează **din folderul `backend/`**, unde le rulează și backend-ul. Modelele YOLO și SAM 2 se descarcă în `backend/models/`, iar Stable Diffusion și OWLv2 în cache-ul Hugging Face (`~/.cache/huggingface`). Pentru GPU, după `start.py --pipeline` instalează PyTorch cu CUDA (comanda e în `backend/requirements-pipeline.txt`).
 
 | Script | Rol |
 |---|---|

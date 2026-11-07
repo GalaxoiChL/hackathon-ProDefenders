@@ -91,6 +91,11 @@ class Settings:
         dist = front / "dist"
         return dist if (dist / "index.html").is_file() else front
 
+    @property
+    def media_dir(self) -> Path:
+        """Clips published for the team (frontend/demo/media, Git LFS), served at /media like in Vite."""
+        return (self.frontend_root or self.root.parent / "frontend") / "demo" / "media"
+
     @classmethod
     def from_env(cls, root: Path | None = None) -> "Settings":
         root = root or ROOT

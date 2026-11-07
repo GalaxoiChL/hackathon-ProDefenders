@@ -21,8 +21,9 @@ Teste: `.venv/Scripts/python -m pytest -q tests`
 | Metodă | Ruta | Ce face |
 |---|---|---|
 | GET | `/api/health` | starea serverului, clipurile găsite, sursa reclamelor |
-| GET | `/api/regions` | RO / US / JP: nume, steag, monedă, CPM |
-| GET | `/api/geo?country=` | țara privitorului și regiunea demo potrivită |
+| GET | `/api/countries?q=&continent=` | **toate cele 250 de țări** (ISO 3166-1): nume RO/EN, steag, monedă, limbă, continent, CPM, pentru selector |
+| GET | `/api/countries/{code}` | o singură țară |
+| GET | `/api/geo?country=` | țara privitorului, cu toate detaliile |
 | GET | `/api/clips` | lista clipurilor randate |
 | GET | `/api/clips/{clip}` | `manifest.json` + `video_url` / `ai_view_url` gata de pus în `<video>` |
 | GET | `/api/clips/{clip}/play?country=` | **versiunea pentru privitorul ăsta** + reclama + toate regiunile |
@@ -43,13 +44,29 @@ curl -X POST localhost:8000/api/jobs -H "Content-Type: application/json" \
 ## Cum se alege țara
 
 Câștigă primul care răspunde:
-1. `?country=JP`, util când schimbi țara de mână în demo
+1. `?country=FR`, orice cod ISO din lume, util când schimbi țara de mână în demo
 2. headerul `X-Demo-Country: JP`, pentru selectorul din frontend
 3. headerul `CF-IPCountry`, dacă serverul stă în spatele Cloudflare
 4. geolocație IP prin ip-api.com (gratuit, fără cheie, cu cache)
 5. `DEFAULT_REGION`, pentru localhost, rețea locală sau când lookup-ul eșuează
 
-Pentru țările care nu au versiune proprie se folosește cea mai apropiată piață demo (MD→RO, CA→US, KR→JP etc.), iar dacă nu există una, regiunea implicită.
+Un cod necunoscut (de ex. `ZZ`) dat prin `?country=` întoarce eroarea 400. Dacă vine prin header, e ignorat.
+
+## Orice țară, orice versiune
+
+O „regiune” e pur și simplu țara pentru care s-a randat clipul (`output/<clip>_<cc>.mp4`). Orice țară poate avea versiunea ei: pui imaginea reclamei în `assets/generated/<clip>/fr.png` (sau `assets/ads/fr.png`), iar jobul randează automat și versiunea FR.
+
+Privitorii din țări fără versiune proprie primesc **cea mai apropiată versiune**, în ordinea:
+
+| Potrivire (`viewer.match`) | Exemplu, cu versiunile RO / US / JP |
+|---|---|
+| `exact` | US → US |
+| `language`: aceeași limbă | MD → RO (română), CA / AU → US (engleză) |
+| `subregion`: aceeași zonă (UN M49) | PL → RO (Europa de Est), KR → JP (Asia de Est) |
+| `continent` | FR → RO, BR → US, IN → JP |
+| `default` | EG → RO (nimic randat în Africa) |
+
+Datele țărilor sunt în `backend/countries.json` (nume în română din CLDR, limbă oficială, monedă, regiune UN M49, CPM estimat după nivelul de venit). Le regenerezi cu `pip install babel` și `python backend/tools/build_countries.py`.
 
 ## Fallback-uri (demo-ul nu rămâne gol)
 

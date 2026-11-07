@@ -58,7 +58,7 @@ Scrie-ți numele în coloana **Owner**, lucrează pe branch-ul indicat și desch
 | **2** | **AI de scenă și generare reclame** | analiza scenei și brand safety cu Ollama `gemma3:4b`, alegerea reclamei per țară cu motiv, generarea vizualului prin API de imagini + textul pus de cod din `ads.json` | `scene.json` cu alegerile și motivele, plus câte un PNG per țară la formatul panoului | `ai-ads` | _liber_ |
 | **3** | **Frontend demo** | player web cu țările sincronizate, selector de țară sau geolocație IP, buton „Arată ce vede AI-ul”, dashboard pentru advertiser (spații, vizibilitate, venit estimat) | demo-ul complet rulează în browser, citind `manifest.json` | `frontend` | _liber_ |
 | **4** | **Date, conținut și pitch** | `data/ads.json` cu 2–3 branduri inventate per țară (RO, US, JP) + poze de produs, 2–3 clipuri demo (cameră fixă, oameni prin fața panoului), cifre cost/valoare, prezentarea de 3 minute | baza de date completă, clipurile alese, slide-urile și pitch-ul repetat | `content` | _liber_ |
-| **B** | **Server API** | FastAPI în `backend/`: servește manifestele și video-urile (cu seek), geolocație IP → regiune, cifrele pentru dashboard, joburi care rulează pipeline-ul și scriu `manifest.json`, fallback-uri pentru demo | ✅ v1 gata: `uvicorn backend.app:app`, 26 de teste trec; detalii în `backend/README.md` | `backend` | _liber_ |
+| **B** | **Server API** | FastAPI în `backend/`: servește manifestele și video-urile (cu seek), geolocație IP pentru orice țară din lume (250, cu fallback la cea mai apropiată versiune randată), cifrele pentru dashboard, joburi care rulează pipeline-ul și scriu `manifest.json`, fallback-uri pentru demo | ✅ v1 gata: `uvicorn backend.app:app`, 34 de teste trec; detalii în `backend/README.md` | `backend` | _liber_ |
 
 Dependențe: **3** poate începe imediat cu videoclipurile existente din `output/`. **2** are nevoie de formatul `ads.json` (de mai jos) pentru textul reclamelor; până e gata baza de date, folosește exemplul din contract. **1** leagă totul la final; până atunci fiecare task rulează singur, pe fișiere.
 
@@ -99,6 +99,8 @@ Toate coordonatele sunt în **pixeli din cadrul original**. Colțurile sunt mere
   "choices": { "RO": { "ad_id": "ro-pizza-bunicii", "reason": "..." } } }
 ```
 
+Codurile de regiune (`region`, `code`, cheile din `choices`) sunt coduri de țară **ISO 3166-1 alpha-2**. Orice țară din lume poate avea o versiune.
+
 **`output/<clip>.manifest.json`** (task 1 → task 3)
 ```json
 { "clip": "melbourne", "ai_view": "output/melbourne_ai_view.mp4",
@@ -108,7 +110,8 @@ Toate coordonatele sunt în **pixeli din cadrul original**. Colțurile sunt mere
 Opțional, `"stats": { "frames": 480, "lost_frames": 12, "fps": 25, "width": 1920, "height": 1080 }`. Îl scrie jobul din backend, iar dashboard-ul îl folosește pentru vizibilitate.
 
 **API backend** (backend → task 3): frontendul citește prin server, nu direct fișierele. Lista completă e în `backend/README.md` și la `/docs`.
-- `GET /api/clips/{clip}/play?country=XX` întoarce `{ viewer: {country, region, source}, current: {code, video_url, ad_id, reason}, ad, ai_view_url, regions: [...] }`
+- `GET /api/countries` întoarce toate țările lumii (cod, nume, steag, continent), pentru selector.
+- `GET /api/clips/{clip}/play?country=XX` (orice cod ISO) întoarce `{ viewer: {country, name, flag, region, match, source}, current: {code, video_url, ad_id, reason}, ad, ai_view_url, regions: [...] }`. `match` arată de ce s-a ales versiunea: `exact`, `language`, `subregion`, `continent` sau `default`.
 - `GET /api/clips/{clip}/stats?views=N` întoarce `{ spaces, visibility, brand_safety, regions: [{code, impressions, revenue_usd}], totals, cost_vs_value, assumptions }`
 - `POST /api/jobs {clip}` pornește pipeline-ul, iar `GET /api/jobs/{id}` arată progresul. La final se scrie `output/<clip>.manifest.json`.
 - Fișierele sunt servite la `/output/...`, `/assets/...` și `/data/...` (căile din manifest + `/` în față).

@@ -16,7 +16,7 @@ from .geo import GeoResolver
 from .jobs import JobRunner
 from .models import JobRequest, Manifest
 from .stats import clip_stats
-from .store import BadData, NotFound, Store, url_for
+from .store import BadData, BadRequest, NotFound, Store, url_for
 
 
 def manifest_out(m: Manifest) -> dict:
@@ -26,7 +26,7 @@ def manifest_out(m: Manifest) -> dict:
     for r in data["regions"]:
         r["video_url"] = url_for(r["video"])
         r.setdefault("label", regions.label(r["code"]))
-        r["flag"] = regions.REGIONS.get(r["code"].upper(), {}).get("flag")
+        r["flag"] = regions.flag(r["code"])
     return data
 
 
@@ -47,6 +47,16 @@ def create_app(settings: Settings | None = None, geo: GeoResolver | None = None)
     async def _not_found(_: Request, exc: NotFound):
         return JSONResponse(status_code=404, content={"detail": str(exc)})
 
+    @app.exception_handler(BadRequest)
+    async def _bad_request(_: Request, exc: BadRequest):
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+    def country_or_400(code: str) -> dict:
+        c = regions.get(code)
+        if not c:
+            raise BadRequest(f"unknown country code: {code!r} (use ISO 3166-1 alpha-2, e.g. FR)")
+        return c
+
     @app.exception_handler(BadData)
     async def _bad_data(_: Request, exc: BadData):
         return JSONResponse(status_code=422, content={"detail": str(exc)})
@@ -56,19 +66,29 @@ def create_app(settings: Settings | None = None, geo: GeoResolver | None = None)
     def health():
         ads, ads_source = store.ads()
         return {"status": "ok", "clips": store.list_clips(), "ads": len(ads), "ads_source": ads_source,
+                "countries": len(regions.countries()),
                 "output_dir": settings.output_dir.is_dir(), "default_region": settings.default_region,
                 "geo_enabled": settings.geo_enabled,
                 "jobs_running": sum(j.status == "running" for j in jobs.jobs.values())}
 
-    @app.get("/api/regions", tags=["meta"])
-    def list_regions():
-        return [{"code": k, **v} for k, v in regions.REGIONS.items()]
+    # ---------------- countries ----------------
+    @app.get("/api/countries", tags=["countries"],
+             summary="Toate țările lumii (ISO 3166-1), pentru selectorul de țară")
+    def list_countries(q: str | None = Query(None, description="caută după cod sau nume (RO/EN)"),
+                       continent: str | None = Query(None, description="ex: Europe / Europa")):
+        return regions.search(q, continent)
 
-    @app.get("/api/geo", tags=["meta"], summary="Țara privitorului (query > header > Cloudflare > IP > default)")
+    @app.get("/api/countries/{code}", tags=["countries"])
+    def get_country(code: str):
+        return country_or_400(code)
+
+    @app.get("/api/geo", tags=["countries"],
+             summary="Țara privitorului (query > header > Cloudflare > IP > default)")
     async def viewer_geo(request: Request, country: str | None = Query(None, min_length=2, max_length=2)):
+        if country:
+            country_or_400(country)
         g = await geo.resolve(request, country)
-        g["region"] = regions.region_for_country(g["country"], list(regions.REGIONS), settings.default_region)
-        return g
+        return {**g, "details": regions.get(g["country"])}
 
     # ---------------- clips ----------------
     @app.get("/api/clips", tags=["clips"])
@@ -91,10 +111,12 @@ def create_app(settings: Settings | None = None, geo: GeoResolver | None = None)
              summary="Ce versiune vede privitorul acesta (după geolocație sau ?country=)")
     async def play(clip: str, request: Request,
                    country: str | None = Query(None, min_length=2, max_length=2)):
+        if country:
+            country_or_400(country)
         m = manifest_out(store.manifest(clip))
         g = await geo.resolve(request, country)
         codes = [r["code"] for r in m["regions"]]
-        chosen = regions.region_for_country(g["country"], codes, settings.default_region)
+        chosen, match = regions.resolve(g["country"], codes, settings.default_region)
         current = next(r for r in m["regions"] if r["code"].upper() == chosen)
         ad = None
         if current.get("ad_id"):
@@ -102,8 +124,11 @@ def create_app(settings: Settings | None = None, geo: GeoResolver | None = None)
                 ad = store.ad(current["ad_id"]).model_dump()
             except NotFound:
                 pass
-        return {"clip": clip, "viewer": {**g, "region": chosen,
-                                         "exact_match": chosen == (g["country"] or "").upper()},
+        viewer = regions.get(g["country"]) or {}
+        return {"clip": clip,
+                "viewer": {**g, "name": viewer.get("name"), "flag": viewer.get("flag"),
+                           "region": chosen, "match": match, "match_label": regions.MATCH_LABELS[match],
+                           "exact_match": match == "exact"},
                 "current": current, "ad": ad, "ai_view_url": m["ai_view_url"], "regions": m["regions"]}
 
     @app.get("/api/clips/{clip}/scene", tags=["clips"], summary="Analiza scenei + brand safety (task 2)")

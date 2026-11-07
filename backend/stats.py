@@ -73,14 +73,13 @@ def clip_stats(settings: Settings, manifest: Manifest, surfaces: Surfaces | None
     safe = scene.brand_safety.safe if scene else True
     per_region, total_rev = [], 0.0
     for r in manifest.regions:
-        meta = regions.REGIONS.get(r.code.upper(), {})
-        cpm = meta.get("cpm_usd", 5.0)
+        cpm = regions.cpm_usd(r.code)
         impressions = round(views * visibility) if safe else 0
         revenue = impressions * cpm / 1000 * max(1, len(spaces))
         total_rev += revenue
         ad = ad_by_id.get(r.ad_id) if r.ad_id else None
         per_region.append({
-            "code": r.code, "label": r.label or regions.label(r.code),
+            "code": r.code, "label": r.label or regions.label(r.code), "flag": regions.flag(r.code),
             "ad_id": r.ad_id, "brand": ad.brand if ad else None, "reason": r.reason,
             "views": views, "impressions": impressions, "cpm_usd": cpm,
             "revenue_usd": round(revenue, 2),
@@ -107,7 +106,8 @@ def clip_stats(settings: Settings, manifest: Manifest, surfaces: Surfaces | None
         },
         "assumptions": {
             "views_per_region": views,
-            "cpm_usd": {k: v["cpm_usd"] for k, v in regions.REGIONS.items()},
+            "cpm_usd": {r.code: regions.cpm_usd(r.code) for r in manifest.regions},
+            "cpm_source": "estimare pe nivel de venit al țării (Banca Mondială), backend/countries.json",
             "ai_cost_per_placement_usd": settings.ai_cost_per_placement,
             "manual_hours_per_placement": settings.manual_hours_per_placement,
             "editor_hourly_rate_usd": settings.editor_hourly_rate,

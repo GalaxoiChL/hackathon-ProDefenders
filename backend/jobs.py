@@ -24,7 +24,7 @@ from . import regions
 from .config import Settings
 from .models import ClipStats, JobRequest, Manifest, ManifestRegion
 from .stats import probe_video
-from .store import NotFound, Store, check_clip
+from .store import BadRequest, NotFound, Store, check_clip
 
 PROGRESS_RE = re.compile(r"^\s*(\d+)/(\d+|\?) frames")
 SUMMARY_RE = re.compile(r"frames: (\d+), billboard lost in (\d+)")
@@ -100,23 +100,30 @@ class JobRunner:
         if req.ads:
             ads = {}
             for code, rel in req.ads.items():
+                if not regions.is_country(code):
+                    raise BadRequest(f"unknown country code: {code!r} (use ISO 3166-1 alpha-2, e.g. FR)")
                 p = self.s.root / rel
                 if not p.is_file():
                     raise NotFound(f"ad image not found for {code}: {rel}")
                 ads[code.upper()] = p
             return ads
-        ads = {}
-        for code in regions.REGIONS:
-            for cand in (self.s.assets_dir / "generated" / clip / f"{code.lower()}.png",
-                         self.s.assets_dir / "generated" / clip / f"{code}.png",
-                         self.s.assets_dir / "ads" / f"{code.lower()}_portrait.png",
-                         self.s.assets_dir / "ads" / f"{code.lower()}.png"):
-                if cand.is_file():
-                    ads[code] = cand
-                    break
+        # Any country with an ad image gets a version. Generated (task 2) beats placeholder.
+        # Lower priority first, so better sources overwrite.
+        ads: dict[str, Path] = {}
+        sources = [(self.s.assets_dir / "ads", ("{cc}.png", "{cc}_portrait.png")),
+                   (self.s.assets_dir / "generated" / clip, ("{cc}.png",))]
+        for folder, patterns in sources:
+            if not folder.is_dir():
+                continue
+            for p in sorted(folder.glob("*.png")):
+                for pat in patterns:
+                    prefix, suffix = pat.split("{cc}")
+                    stem = p.name[len(prefix):len(p.name) - len(suffix)] if p.name.endswith(suffix) else ""
+                    if len(stem) == 2 and regions.is_country(stem):
+                        ads[stem.upper()] = p
         if not ads:
-            raise NotFound("no ad images found (assets/generated/<clip>/ or assets/ads/)")
-        return ads
+            raise NotFound("no ad images found (assets/generated/<clip>/<cc>.png or assets/ads/<cc>.png)")
+        return dict(sorted(ads.items()))
 
     def build(self, req: JobRequest) -> Job:
         clip = check_clip(req.clip)

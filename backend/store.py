@@ -56,6 +56,10 @@ class BadData(Exception):
     """A file exists but does not match its contract."""
 
 
+class BadRequest(Exception):
+    """The client asked for something invalid (e.g. an unknown country code)."""
+
+
 def check_clip(clip: str) -> str:
     if not CLIP_RE.match(clip):
         raise NotFound(f"invalid clip name: {clip!r}")
@@ -95,7 +99,7 @@ class Store:
                 names.add(p.name[: -len(".manifest.json")])
             for p in out.glob("*.mp4"):
                 m = _REGION_FILE_RE.match(p.name)
-                if m and not p.name.endswith(".tmp.mp4"):
+                if m and not p.name.endswith(".tmp.mp4") and regions.is_country(m["code"]):
                     names.add(m["clip"])
         return sorted(n for n in names if CLIP_RE.match(n))
 
@@ -116,7 +120,8 @@ class Store:
         regs = []
         for p in files:
             m = _REGION_FILE_RE.match(p.name)
-            if not m or m["clip"] != clip or p.name.endswith(".tmp.mp4"):
+            if (not m or m["clip"] != clip or p.name.endswith(".tmp.mp4")
+                    or not regions.is_country(m["code"])):
                 continue
             code = m["code"].upper()
             choice = scene.choices.get(code) if scene else None

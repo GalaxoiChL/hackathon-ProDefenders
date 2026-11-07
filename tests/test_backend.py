@@ -13,7 +13,8 @@ from backend.config import Settings
 from backend.geo import GeoResolver
 from backend.jobs import JobRunner
 from backend.models import JobRequest
-from backend.regions import region_for_country
+from backend import regions
+from backend.regions import region_for_country, resolve
 from backend.stats import polygon_area
 from backend.store import Store
 
@@ -53,13 +54,32 @@ def client(root: Path) -> TestClient:
 
 
 # ---------- pure functions ----------
-def test_region_for_country():
+def test_countries_data():
+    cs = regions.countries()
+    assert len(cs) >= 249
+    for code, c in cs.items():
+        assert len(code) == 2 and code.isupper()
+        assert c["name"] and c["flag"] and c["continent"] and c["subregion"] and c["cpm_usd"] > 0
+    assert cs["RO"]["name"] == "România" and cs["RO"]["language"] == "ro" and cs["RO"]["flag"] == "🇷🇴"
+    assert cs["DE"]["name"] == "Germania" and cs["DE"]["currency"] == "EUR"
+
+
+def test_resolve_any_country():
     avail = ["RO", "US", "JP"]
-    assert region_for_country("us", avail, "RO") == "US"
-    assert region_for_country("MD", avail, "RO") == "RO"      # nearest market
-    assert region_for_country("CA", avail, "RO") == "US"
-    assert region_for_country("FR", avail, "RO") == "RO"      # default
-    assert region_for_country("FR", ["JP"], "RO") == "JP"     # default not rendered
+    assert resolve("us", avail, "RO") == ("US", "exact")
+    assert resolve("MD", avail, "RO") == ("RO", "language")    # ro
+    assert resolve("CA", avail, "RO") == ("US", "language")    # en
+    assert resolve("AU", avail, "RO") == ("US", "language")
+    assert resolve("KR", avail, "RO") == ("JP", "subregion")   # Eastern Asia
+    assert resolve("PL", avail, "RO") == ("RO", "subregion")   # Eastern Europe
+    assert resolve("FR", avail, "RO") == ("RO", "continent")   # Europe
+    assert resolve("BR", avail, "RO") == ("US", "continent")   # Americas
+    assert resolve("IN", avail, "RO") == ("JP", "continent")   # Asia
+    assert resolve("EG", avail, "RO") == ("RO", "default")     # Africa: nothing rendered
+    assert resolve("AT", ["DE", "FR", "US"], "US") == ("DE", "language")
+    assert resolve("BR", ["ES", "PT", "US"], "US") == ("PT", "language")
+    assert resolve("FR", ["JP"], "RO") == ("JP", "default")    # default not rendered
+    assert resolve(None, avail, "RO") == ("RO", "default")
     assert region_for_country("RO", [], "RO") is None
 
 
@@ -137,6 +157,42 @@ def test_play_header_and_nearest(client):
     r = client.get("/api/clips/melbourne/play", headers={"X-Demo-Country": "CA"}).json()
     assert r["current"]["code"] == "US"
     assert r["viewer"]["exact_match"] is False
+    assert r["viewer"]["match"] == "language" and r["viewer"]["name"] == "Canada"
+
+
+def test_play_any_country(client):
+    r = client.get("/api/clips/melbourne/play?country=fr").json()
+    assert r["viewer"]["country"] == "FR" and r["viewer"]["flag"] == "🇫🇷"
+    assert r["current"]["code"] == "RO" and r["viewer"]["match"] == "continent"
+    assert client.get("/api/clips/melbourne/play?country=KR").json()["current"]["code"] == "JP"
+
+
+def test_unknown_country_is_400(client):
+    assert client.get("/api/clips/melbourne/play?country=ZZ").status_code == 400
+    assert client.get("/api/geo?country=QQ").status_code == 400
+    assert client.get("/api/countries/QQ").status_code == 400
+
+
+def test_countries_endpoint(client):
+    all_ = client.get("/api/countries").json()
+    assert len(all_) >= 249
+    names = [c["name"] for c in all_]
+    assert names == sorted(names)
+    assert [c["code"] for c in client.get("/api/countries?q=germ").json()] == ["DE"]
+    assert [c["code"] for c in client.get("/api/countries?q=germany").json()] == ["DE"]
+    assert {c["continent"] for c in client.get("/api/countries?continent=Europa").json()} == {"Europe"}
+    assert client.get("/api/countries/jp").json()["name"] == "Japonia"
+
+
+def test_header_with_unknown_country_ignored(client):
+    r = client.get("/api/clips/melbourne/play", headers={"X-Demo-Country": "XX"}).json()
+    assert r["viewer"]["source"] == "default"
+
+
+def test_non_country_files_ignored(root, client):
+    write(root / "output/melbourne_zz.mp4", b"x")      # ZZ is not a country
+    codes = [r["code"] for r in client.get("/api/clips/melbourne").json()["regions"]]
+    assert "ZZ" not in codes
 
 
 def test_play_default_on_localhost(client):
@@ -151,7 +207,9 @@ def test_ip_geolocation(root):
         return "US"
     c = make_client(root, lookup)
     h = {"X-Forwarded-For": "8.8.8.8"}
-    assert c.get("/api/geo", headers=h).json() == {"country": "US", "source": "ip", "ip": "8.8.8.8", "region": "US"}
+    g = c.get("/api/geo", headers=h).json()
+    assert (g["country"], g["source"], g["ip"]) == ("US", "ip", "8.8.8.8")
+    assert g["details"]["name"] == "Statele Unite ale Americii"
     c.get("/api/geo", headers=h)
     assert calls == ["8.8.8.8"]                                         # cached
     assert c.get("/api/geo", headers={"X-Forwarded-For": "10.0.0.1"}).json()["source"] == "default"
@@ -250,13 +308,13 @@ def test_job_runs_and_writes_manifest(job_root):
     settings = Settings(root=job_root, python=sys.executable)
     runner = JobRunner(settings, Store(settings))
     job = runner.build(JobRequest(clip="melbourne"))
-    assert job.regions == ["RO", "US", "JP"]
+    assert job.regions == ["JP", "RO", "US"]
     runner.run(job)
     assert job.status == "done", (job.error, list(job.log))
     assert job.frames_done == 90
     m = json.loads((job_root / "output/melbourne.manifest.json").read_text(encoding="utf-8"))
-    assert [r["code"] for r in m["regions"]] == ["RO", "US", "JP"]
-    assert m["regions"][0]["video"] == "output/melbourne_ro.mp4"
+    assert [r["code"] for r in m["regions"]] == ["JP", "RO", "US"]
+    assert m["regions"][1]["video"] == "output/melbourne_ro.mp4"
     assert m["ai_view"] == "output/melbourne_ai_view.mp4"
     assert m["stats"]["frames"] == 90 and m["stats"]["lost_frames"] == 9
 
@@ -266,6 +324,27 @@ def test_job_prefers_generated_ads(job_root):
     settings = Settings(root=job_root)
     job = JobRunner(settings, Store(settings)).build(JobRequest(clip="melbourne"))
     assert any("generated" in a and a.startswith("ro=") for a in job.command)
+
+
+def test_job_any_country(job_root):
+    write(job_root / "assets/ads/fr.png", b"png")
+    write(job_root / "assets/generated/melbourne/br.png", b"png")
+    write(job_root / "assets/ads/zz.png", b"png")          # not a country: ignored
+    settings = Settings(root=job_root, python=sys.executable)
+    runner = JobRunner(settings, Store(settings))
+    job = runner.build(JobRequest(clip="melbourne"))
+    assert job.regions == ["BR", "FR", "JP", "RO", "US"]
+    runner.run(job)
+    assert job.status == "done", job.error
+    m = json.loads((job_root / "output/melbourne.manifest.json").read_text(encoding="utf-8"))
+    fr = next(r for r in m["regions"] if r["code"] == "FR")
+    assert fr["label"] == "Franța" and fr["video"] == "output/melbourne_fr.mp4"
+
+
+def test_job_unknown_country_is_400(job_root):
+    c = make_client(job_root)
+    r = c.post("/api/jobs", json={"clip": "melbourne", "ads": {"ZZ": "assets/ads/ro_portrait.png"}})
+    assert r.status_code == 400
 
 
 def test_job_missing_video_is_404(root, client):
@@ -284,4 +363,5 @@ def test_job_api_end_to_end(job_root):
             break
         time.sleep(0.1)
     assert j["status"] == "done", j
-    assert c.get("/api/clips/melbourne").json()["regions"][0]["video_url"] == "/output/melbourne_ro.mp4"
+    ro = next(r for r in c.get("/api/clips/melbourne").json()["regions"] if r["code"] == "RO")
+    assert ro["video_url"] == "/output/melbourne_ro.mp4"

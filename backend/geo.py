@@ -16,6 +16,7 @@ from typing import Awaitable, Callable
 import httpx
 from fastapi import Request
 
+from . import regions
 from .config import Settings
 
 COUNTRY_RE = re.compile(r"^[A-Za-z]{2}$")
@@ -41,7 +42,8 @@ def is_public(ip: str | None) -> bool:
 
 
 def _country(value: str | None) -> str | None:
-    if value and COUNTRY_RE.match(value.strip()) and value.strip().upper() != "XX":
+    """Normalize to an ISO 3166-1 alpha-2 code we know; anything else (XX, T1, typos) -> None."""
+    if value and COUNTRY_RE.match(value.strip()) and regions.is_country(value.strip()):
         return value.strip().upper()
     return None
 

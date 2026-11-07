@@ -1,5 +1,5 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { listClips, loadClip } from "./data/loadClip";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { listClips, loadClip, mediaIndexStamp } from "./data/loadClip";
 import type { ClipData, RegionCode } from "./data/types";
 
 interface AppState {
@@ -11,9 +11,14 @@ interface AppState {
   /** Țara curentă, comună tuturor taburilor. */
   region: RegionCode | null;
   setRegion: (code: RegionCode) => void;
+  /** Un clip făcut în tabul Upload: trăiește doar în pagina deschisă, nu se salvează nicăieri. */
+  addSessionClip: (data: ClipData) => void;
 }
 
 const AppContext = createContext<AppState | null>(null);
+
+/** Cât de des verificăm media/index.json pentru clipuri noi. */
+const MEDIA_CHECK_MS = 30_000;
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [clips, setClips] = useState<string[]>(["melbourne"]);
@@ -21,18 +26,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<ClipData | null>(null);
   const [loading, setLoading] = useState(true);
   const [region, setRegion] = useState<RegionCode | null>(null);
+  const session = useRef<Record<string, ClipData>>({});
+
+  // crește când apare sau s-a refăcut un clip publicat în media/, ca să reîncărcăm datele
+  const [mediaVersion, setMediaVersion] = useState(0);
 
   useEffect(() => {
     listClips().then((list) => {
-      setClips(list);
-      setClip((c) => (list.includes(c) ? c : list[0]));
+      const all = [...new Set([...list, ...Object.keys(session.current)])];
+      setClips(all);
+      setClip((c) => (all.includes(c) ? c : all[0]));
     });
+  }, [mediaVersion]);
+
+  // după un git pull, clipurile noi apar singure, fără reîncărcarea paginii
+  useEffect(() => {
+    let last: string | undefined;
+    const check = () =>
+      mediaIndexStamp().then((stamp) => {
+        if (last !== undefined && stamp !== last) setMediaVersion((v) => v + 1);
+        last = stamp;
+      });
+    check();
+    const t = window.setInterval(check, MEDIA_CHECK_MS);
+    return () => clearInterval(t);
   }, []);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    loadClip(clip).then((d) => {
+    const own = session.current[clip];
+    (own ? Promise.resolve(own) : loadClip(clip)).then((d) => {
       if (cancelled) return;
       setData(d);
       // păstrăm țara aleasă dacă există și în clipul nou; altfel cea detectată de backend după IP, apoi prima
@@ -43,10 +67,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [clip]);
+  }, [clip, mediaVersion]);
+
+  const addSessionClip = useCallback((d: ClipData) => {
+    session.current[d.manifest.clip] = d;
+    setClips((list) => (list.includes(d.manifest.clip) ? list : [...list, d.manifest.clip]));
+    setClip(d.manifest.clip);
+    setMediaVersion((v) => v + 1); // reîncarcă și dacă numele era deja ales
+  }, []);
 
   return (
-    <AppContext.Provider value={{ clips, clip, setClip, data, loading, region, setRegion }}>{children}</AppContext.Provider>
+    <AppContext.Provider value={{ clips, clip, setClip, data, loading, region, setRegion, addSessionClip }}>{children}</AppContext.Provider>
   );
 }
 

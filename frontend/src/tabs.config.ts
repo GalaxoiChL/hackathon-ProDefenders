@@ -2,6 +2,7 @@
 import type { ComponentType } from "react";
 import WatchTab from "./tabs/WatchTab";
 import CompareTab from "./tabs/CompareTab";
+import UploadTab from "./tabs/UploadTab";
 import MarketplaceTab from "./tabs/MarketplaceTab";
 import CompaniesTab from "./tabs/CompaniesTab";
 import OutreachTab from "./tabs/OutreachTab";
@@ -19,6 +20,7 @@ export interface TabDef {
 export const TABS: TabDef[] = [
   { id: "watch", label: "Watch", component: WatchTab, enabled: true },
   { id: "compare", label: "Compare", component: CompareTab, enabled: true },
+  { id: "upload", label: "Upload", component: UploadTab, enabled: true },
   { id: "marketplace", label: "Marketplace", component: MarketplaceTab, enabled: true },
   { id: "companies", label: "Companies", component: CompaniesTab, enabled: true },
   { id: "outreach", label: "Outreach", component: OutreachTab, enabled: true },

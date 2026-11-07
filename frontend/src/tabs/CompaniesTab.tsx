@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useMarket } from "../market";
 import type { AuctionResult } from "../data/auction";
 import type { Ad, Bid, Slot } from "../data/types";
-import { AdCreative, CountryMark, PageHeader, Section, Stat, compact, dec, eur, num, pct } from "../components/ui";
+import { AdCreative, CountryMark, PageHeader, Section, Stat, compact, dec, money, num, pct } from "../components/ui";
 
 interface CompanyStats {
   brand: Ad;
@@ -37,12 +37,16 @@ function computeStats(brand: Ad, slots: Slot[], bids: Bid[], results: Record<str
     impressions,
     cpm: impressions ? (spend / impressions) * 1000 : undefined,
     winRate: decided ? won.length / decided : undefined,
-    avgVisibility: won.length ? won.reduce((s, w) => s + w.slot.visibility, 0) / won.length : undefined,
+    avgVisibility: (() => {
+      const v = won.map((w) => w.slot.visibility).filter((x): x is number => x !== undefined);
+      return v.length ? v.reduce((a, b) => a + b, 0) / v.length : undefined;
+    })(),
   };
 }
 
 export default function CompaniesTab() {
-  const { brands, slots, bids, results } = useMarket();
+  const { brands, slots, bids, results, currency } = useMarket();
+  const cash = (n: number) => money(n, currency);
   const stats = brands
     .map((b) => computeStats(b, slots, bids, results))
     .sort((a, b) => b.spend - a.spend || b.bids.length - a.bids.length || a.brand.brand.localeCompare(b.brand.brand));
@@ -71,7 +75,7 @@ export default function CompaniesTab() {
               <p className={`font-serif text-lg ${active ? "" : "text-ink-2"}`}>{s.brand.brand}</p>
               <p className="mt-0.5 flex items-center justify-between gap-2 text-xs text-muted">
                 <CountryMark code={s.brand.region} muted />
-                <span className="tabular-nums">{s.spend ? eur(s.spend) : "no spend"}</span>
+                <span className="tabular-nums">{s.spend ? cash(s.spend) : "no spend"}</span>
               </p>
             </button>
           );
@@ -113,9 +117,9 @@ export default function CompaniesTab() {
                   <td className="py-3 text-right tabular-nums">{s.bids.length}</td>
                   <td className="py-3 text-right tabular-nums">{s.won.length}</td>
                   <td className="py-3 text-right tabular-nums">{s.winRate !== undefined ? pct(s.winRate) : "—"}</td>
-                  <td className="py-3 text-right tabular-nums">{s.spend ? eur(s.spend) : "—"}</td>
+                  <td className="py-3 text-right tabular-nums">{s.spend ? cash(s.spend) : "—"}</td>
                   <td className="py-3 text-right tabular-nums">{s.impressions ? compact(s.impressions) : "—"}</td>
-                  <td className="py-3 text-right tabular-nums">{s.cpm !== undefined ? `€${s.cpm.toFixed(2)}` : "—"}</td>
+                  <td className="py-3 text-right tabular-nums">{s.cpm !== undefined ? `${currency === "USD" ? "$" : "€"}${s.cpm.toFixed(2)}` : "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -127,7 +131,8 @@ export default function CompaniesTab() {
 }
 
 function CompanyDetail({ s }: { s: CompanyStats }) {
-  const { slots, results } = useMarket();
+  const { slots, results, currency } = useMarket();
+  const cash = (n: number) => money(n, currency);
   const history = [...s.bids].sort((a, b) => b.placed_at.localeCompare(a.placed_at));
 
   return (
@@ -136,20 +141,25 @@ function CompanyDetail({ s }: { s: CompanyStats }) {
         <div>
           <h2 className="font-serif text-4xl font-medium tracking-tight">{s.brand.brand}</h2>
           <p className="mt-2 flex items-center gap-3 text-sm text-muted">
-            <span className="capitalize">{s.brand.category}</span>·<CountryMark code={s.brand.region} muted />
+            {s.brand.category && (
+              <>
+                <span className="capitalize">{s.brand.category}</span>·
+              </>
+            )}
+            <CountryMark code={s.brand.region} muted />
           </p>
           <div className="mt-8 grid grid-cols-2 gap-x-8 gap-y-8 sm:grid-cols-3">
             <Stat label="Placements won" value={s.won.length} format={num} note={`of ${s.decided} decided`} />
             <Stat label="Win rate" value={s.winRate} format={pct} />
-            <Stat label="Total spend" value={s.spend} format={eur} />
+            <Stat label="Total spend" value={s.spend} format={cash} />
             <Stat label="Impressions" value={s.impressions} format={compact} note="simulated" />
-            <Stat label="Cost per 1,000 views" value={s.cpm} format={(n) => `€${n.toFixed(2)}`} />
+            <Stat label="Cost per 1,000 views" value={s.cpm} format={(n) => `${currency === "USD" ? "$" : "€"}${n.toFixed(2)}`} />
             <Stat label="Avg. visibility" value={s.avgVisibility} format={(n) => `${dec(n)} / 10`} />
           </div>
         </div>
         <div>
           <AdCreative ad={s.brand} />
-          <p className="mt-2 text-xs text-muted">Creative on file</p>
+          <p className="mt-2 text-xs text-muted">{s.brand.creative ? "The brand's ad" : "Creative on file"}</p>
         </div>
       </div>
 
@@ -157,7 +167,7 @@ function CompanyDetail({ s }: { s: CompanyStats }) {
         <ImpressionsChart total={s.impressions} seed={s.brand.id} />
       </Section>
 
-      <Section title="Bid history" aside={`${history.length} bids`}>
+      <Section title="Bid history" aside={`${history.length} bid${history.length === 1 ? "" : "s"}`}>
         {history.length === 0 ? (
           <p className="text-sm text-muted">This company has not bid yet.</p>
         ) : (
@@ -182,9 +192,9 @@ function CompanyDetail({ s }: { s: CompanyStats }) {
                     <tr key={b.id} className="border-b border-rule">
                       <td className="py-3">{slot?.title ?? b.slot_id}</td>
                       <td className="py-3">{slot && <CountryMark code={slot.region} />}</td>
-                      <td className="py-3 text-right tabular-nums">{eur(b.amount_eur)}</td>
+                      <td className="py-3 text-right tabular-nums">{cash(b.amount)}</td>
                       <td className={`py-3 pl-6 ${label === "Won" ? "text-positive" : label.startsWith("Rejected") ? "text-accent" : "text-muted"}`}>{label}</td>
-                      <td className="py-3 text-right tabular-nums">{outcome?.status === "won" && r?.price !== undefined ? eur(r.price) : "—"}</td>
+                      <td className="py-3 text-right tabular-nums">{outcome?.status === "won" && r?.price !== undefined ? cash(r.price) : "—"}</td>
                     </tr>
                   );
                 })}

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { animate, motion, useReducedMotion } from "framer-motion";
 import { regionStyle } from "../regions";
 import type { Ad } from "../data/types";
+import { assetUrl } from "../data/loadClip";
 
 export function PageHeader({ eyebrow, title, lede, aside }: { eyebrow: string; title: string; lede: string; aside?: ReactNode }) {
   return (
@@ -138,17 +139,34 @@ export function Stat({ label, value, format, note }: { label: string; value: num
 
 /** Reclama, așa cum apare pe panou: culorile, titlul și prețul brandului. */
 export function AdCreative({ ad, size = "md" }: { ad: Ad; size?: "sm" | "md" }) {
-  const c = ad.colors ?? { bg: "#1b1a17", fg: "#ffffff", accent: "#8a1c1c" };
+  // reclama reală (data/creatives/) nu e în git; dacă nu a fost descărcată, arătăm varianta din text
+  const [broken, setBroken] = useState(false);
+  useEffect(() => setBroken(false), [ad.creative]);
+  if (ad.creative && !broken) {
+    return (
+      <img
+        src={assetUrl(ad.creative)}
+        alt={`${ad.brand} ad`}
+        onError={() => setBroken(true)}
+        className="w-full bg-card object-contain"
+        style={{ aspectRatio: size === "sm" ? "3 / 2" : "2 / 1" }}
+      />
+    );
+  }
+
+  const c = { bg: "#1b1a17", fg: "#ffffff", accent: "#8a1c1c", ...ad.colors };
   return (
     <div className="flex flex-col justify-between overflow-hidden" style={{ background: c.bg, color: c.fg, aspectRatio: size === "sm" ? "3 / 2" : "2 / 1" }}>
       <div className={size === "sm" ? "p-3" : "p-5"}>
         <p className={`font-bold tracking-tight ${size === "sm" ? "text-base" : "text-2xl"}`}>{ad.brand}</p>
-        <p className={`mt-1 opacity-90 ${size === "sm" ? "text-xs" : "text-sm"}`}>{ad.headline}</p>
+        <p className={`mt-1 line-clamp-3 opacity-90 ${size === "sm" ? "text-xs" : "text-sm"}`}>{ad.headline ?? ad.description}</p>
       </div>
-      <div className={`flex items-center justify-between font-semibold ${size === "sm" ? "px-3 py-1.5 text-xs" : "px-5 py-2 text-sm"}`} style={{ background: c.accent, color: c.bg }}>
-        <span className="capitalize">{ad.category}</span>
-        <span>{ad.price}</span>
-      </div>
+      {(ad.category || ad.price) && (
+        <div className={`flex items-center justify-between font-semibold ${size === "sm" ? "px-3 py-1.5 text-xs" : "px-5 py-2 text-sm"}`} style={{ background: c.accent, color: c.bg }}>
+          <span className="capitalize">{ad.category}</span>
+          <span>{ad.price}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -184,7 +202,9 @@ export function useNow(intervalMs = 1000): number {
   return now;
 }
 
-export const eur =(n: number) => `€${Math.round(n).toLocaleString("en-GB")}`;
+export const money = (n: number, currency: "EUR" | "USD" = "EUR") =>
+  `${currency === "USD" ? "$" : "€"}${Math.round(n).toLocaleString("en-GB")}`;
+export const eur = (n: number) => money(n, "EUR");
 export const num = (n: number) => Math.round(n).toLocaleString("en-GB");
 export const compact = (n: number) => new Intl.NumberFormat("en-GB", { notation: "compact", maximumFractionDigits: 1 }).format(n);
 export const pct = (n: number) => `${Math.round(n * 100)}%`;

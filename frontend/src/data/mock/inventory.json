@@ -10,7 +10,8 @@
     "screen_time_sec": 14.2,
     "visibility": 7.5,
     "audience": 300000,
-    "cpm_eur": 8,
+    "cpm": 8,
+    "currency": "EUR",
     "closes_in_sec": 540
   },
   {
@@ -24,7 +25,8 @@
     "screen_time_sec": 14.2,
     "visibility": 7.5,
     "audience": 5000000,
-    "cpm_eur": 15,
+    "cpm": 15,
+    "currency": "EUR",
     "closes_in_sec": 780
   },
   {
@@ -38,7 +40,8 @@
     "screen_time_sec": 14.2,
     "visibility": 7.5,
     "audience": 1200000,
-    "cpm_eur": 12,
+    "cpm": 12,
+    "currency": "EUR",
     "closes_in_sec": 1020
   },
   {
@@ -52,7 +55,8 @@
     "screen_time_sec": 9,
     "visibility": 8,
     "audience": 300000,
-    "cpm_eur": 8
+    "cpm": 8,
+    "currency": "EUR"
   },
   {
     "id": "harbour-s1-us",
@@ -65,7 +69,8 @@
     "screen_time_sec": 9,
     "visibility": 8,
     "audience": 5000000,
-    "cpm_eur": 15
+    "cpm": 15,
+    "currency": "EUR"
   },
   {
     "id": "metro-s2-us",
@@ -78,7 +83,8 @@
     "screen_time_sec": 11,
     "visibility": 6.5,
     "audience": 5000000,
-    "cpm_eur": 15
+    "cpm": 15,
+    "currency": "EUR"
   },
   {
     "id": "metro-s2-jp",
@@ -91,6 +97,7 @@
     "screen_time_sec": 11,
     "visibility": 6.5,
     "audience": 1200000,
-    "cpm_eur": 12
+    "cpm": 12,
+    "currency": "EUR"
   }
 ]

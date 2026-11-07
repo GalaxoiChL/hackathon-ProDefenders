@@ -1,14 +1,20 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useApp } from "./state";
-import { loadMarket } from "./data/loadMarket";
+import { loadMarket, type MarketData } from "./data/loadMarket";
 import { ineligibility, runAuction, type AuctionResult } from "./data/auction";
 import type { Ad, Bid, Slot } from "./data/types";
 import mockAds from "./data/mock/ads.json";
+
+/** Cât de des reîncărcăm ofertele din backend (vin prin linkurile din emailuri). */
+const API_REFRESH_MS = 15_000;
 
 interface MarketState {
   slots: Slot[];
   bids: Bid[];
   brands: Ad[];
+  source: MarketData["source"] | null;
+  /** moneda spațiilor (toate au aceeași în aceeași sursă) */
+  currency: Slot["currency"];
   /** Momentul (ms) la care se închide fiecare licitație deschisă. */
   deadlines: Record<string, number>;
   isClosed: (slotId: string) => boolean;
@@ -22,26 +28,42 @@ const MarketContext = createContext<MarketState | null>(null);
 
 export function MarketProvider({ children }: { children: ReactNode }) {
   const loaded = useApp().data?.ads;
-  // Ofertele de test folosesc brandurile de test; le păstrăm lângă reclamele reale (din API sau data/ads.json).
-  const brands = useMemo(() => {
-    const byId = new Map<string, Ad>();
-    for (const a of [...(loaded ?? []), ...(mockAds as Ad[])]) if (!byId.has(a.id)) byId.set(a.id, a);
-    return [...byId.values()];
-  }, [loaded]);
-  const [slots, setSlots] = useState<Slot[]>([]);
+  const [market, setMarket] = useState<MarketData | null>(null);
   const [bids, setBids] = useState<Bid[]>([]);
   const [deadlines, setDeadlines] = useState<Record<string, number>>({});
   const [closed, setClosed] = useState<Set<string>>(new Set());
+  const slots = useMemo(() => market?.slots ?? [], [market]);
+
+  // Companiile: reclamele încărcate, cele care au licitat prin backend și, pentru datele de test, brandurile de test.
+  const brands = useMemo(() => {
+    const byId = new Map<string, Ad>();
+    const extra = market?.source === "api" ? market.companies : (mockAds as Ad[]);
+    for (const a of [...(loaded ?? []), ...extra]) if (!byId.has(a.id)) byId.set(a.id, a);
+    return [...byId.values()];
+  }, [loaded, market]);
 
   useEffect(() => {
-    loadMarket().then(({ slots, bids }) => {
+    loadMarket().then((m) => {
       const now = Date.now();
-      setSlots(slots);
-      setBids(bids);
-      setDeadlines(Object.fromEntries(slots.filter((s) => s.closes_in_sec).map((s) => [s.id, now + s.closes_in_sec! * 1000])));
-      setClosed(new Set(slots.filter((s) => !s.closes_in_sec).map((s) => s.id)));
+      setMarket(m);
+      setBids(m.bids);
+      setDeadlines(Object.fromEntries(m.slots.filter((s) => s.closes_in_sec).map((s) => [s.id, now + s.closes_in_sec! * 1000])));
+      setClosed(new Set(m.slots.filter((s) => s.status === "closed" || (!s.status && !s.closes_in_sec)).map((s) => s.id)));
     });
   }, []);
+
+  // ofertele din backend sosesc oricând (pagina /bid/<token> din email), așa că le reîncărcăm periodic
+  useEffect(() => {
+    if (market?.source !== "api") return;
+    const t = window.setInterval(() => {
+      loadMarket().then((m) => {
+        if (m.source !== "api") return;
+        setMarket(m);
+        setBids(m.bids);
+      });
+    }, API_REFRESH_MS);
+    return () => clearInterval(t);
+  }, [market?.source]);
 
   const closeAuction = useCallback((slotId: string) => setClosed((c) => new Set(c).add(slotId)), []);
 
@@ -70,7 +92,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       if (reason) return reason;
       setBids((list) => [
         ...list.filter((b) => !(b.slot_id === slotId && b.brand_id === brandId)), // o ofertă nouă o înlocuiește pe cea veche
-        { id: `u${Date.now()}`, slot_id: slotId, brand_id: brandId, amount_eur: amount, placed_at: new Date().toISOString() },
+        { id: `u${Date.now()}`, slot_id: slotId, brand_id: brandId, amount, placed_at: new Date().toISOString() },
       ]);
       return null;
     },
@@ -81,6 +103,8 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     slots,
     bids,
     brands,
+    source: market?.source ?? null,
+    currency: slots[0]?.currency ?? "EUR",
     deadlines,
     isClosed: (id) => closed.has(id),
     results,

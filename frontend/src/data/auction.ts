@@ -1,11 +1,19 @@
 // Regulile licitației, deterministe: AI-ul măsoară scena, banii și câștigătorul se calculează aici.
 import type { Ad, Bid, Slot } from "./types";
 
-/** Preț minim = audiență/1000 × CPM × expunere × vizibilitate; expunerea plafonată la 1,5 (15 s pe ecran). */
+/**
+ * Preț minim: cel dat de backend (CPM × privitori / 1000), altfel
+ * audiență/1000 × CPM × expunere × vizibilitate, cu expunerea plafonată la 1,5 (15 s pe ecran).
+ */
 export function reservePrice(slot: Slot): number {
-  const exposure = Math.min(slot.screen_time_sec / 10, 1.5);
-  return Math.round((slot.audience / 1000) * slot.cpm_eur * exposure * (slot.visibility / 10));
+  if (slot.floor !== undefined) return slot.floor;
+  const exposure = Math.min((slot.screen_time_sec ?? 10) / 10, 1.5);
+  return Math.round((slot.audience / 1000) * slot.cpm * exposure * ((slot.visibility ?? 10) / 10));
 }
+
+/** Cum s-a calculat prețul minim, ca text pentru interfață. */
+export const reserveFormula = (slot: Slot) =>
+  slot.floor !== undefined ? "Minimum = CPM × expected views ÷ 1,000." : "Minimum = audience ÷ 1,000 × CPM × exposure × visibility.";
 
 /** Motivul pentru care o ofertă nu poate câștiga, sau null dacă e eligibilă. */
 export function ineligibility(slot: Slot, brand: Ad | undefined, amount: number): string | null {
@@ -38,18 +46,18 @@ const RANK = { won: 0, lost: 1, rejected: 2 } as const;
 export function runAuction(slot: Slot, bids: Bid[], brands: Ad[]): AuctionResult {
   const byId = new Map(brands.map((b) => [b.id, b]));
   const outcomes: BidOutcome[] = bids.map((bid) => {
-    const reason = ineligibility(slot, byId.get(bid.brand_id), bid.amount_eur);
+    const reason = ineligibility(slot, byId.get(bid.brand_id), bid.amount);
     return reason ? { bid, status: "rejected", reason } : { bid, status: "lost" };
   });
   const eligible = outcomes
     .filter((o) => o.status !== "rejected")
-    .sort((a, b) => b.bid.amount_eur - a.bid.amount_eur || a.bid.placed_at.localeCompare(b.bid.placed_at));
+    .sort((a, b) => b.bid.amount - a.bid.amount || a.bid.placed_at.localeCompare(b.bid.placed_at));
 
-  const sorted = () => [...outcomes].sort((a, b) => RANK[a.status] - RANK[b.status] || b.bid.amount_eur - a.bid.amount_eur);
+  const sorted = () => [...outcomes].sort((a, b) => RANK[a.status] - RANK[b.status] || b.bid.amount - a.bid.amount);
   if (!eligible.length) return { outcomes: sorted() };
 
   eligible[0].status = "won";
   for (const o of eligible.slice(1)) o.reason = "Outbid";
-  const price = Math.max(reservePrice(slot), eligible[1]?.bid.amount_eur ?? 0);
+  const price = Math.max(reservePrice(slot), eligible[1]?.bid.amount ?? 0);
   return { outcomes: sorted(), winner: eligible[0].bid, price };
 }

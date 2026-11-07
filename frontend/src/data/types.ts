@@ -86,8 +86,12 @@ export interface Ad {
   category?: string;
   headline?: string;
   price?: string;
-  colors?: { bg: string; fg: string; accent: string };
+  colors?: { bg: string; fg?: string; accent?: string };
   product_image?: string;
+  /** reclama reală a brandului (imagine; nu e în git, se descarcă de la creative_source) */
+  creative?: string;
+  creative_source?: string;
+  description?: string;
   fits?: string[];
   avoid?: string[];
 }
@@ -128,11 +132,18 @@ export interface Slot {
   categories?: string[];
   /** Descrierea scenei, comparată cu `avoid` din ads.json (brand safety). */
   tags?: string[];
-  screen_time_sec: number;
-  visibility: number;
+  screen_time_sec?: number;
+  visibility?: number;
   audience: number;
-  cpm_eur: number;
-  /** Secunde până se închide licitația, de la încărcarea paginii; lipsă = deja închisă. */
+  /** CPM în moneda spațiului */
+  cpm: number;
+  /** EUR în datele de test, USD în backend */
+  currency: "EUR" | "USD";
+  /** preț minim dat de backend; fără el se calculează (auction.ts) */
+  floor?: number;
+  /** "open" fără termen = licitație deschisă până o închide cineva (backend) */
+  status?: "open" | "closed";
+  /** Secunde până se închide licitația, de la încărcarea paginii; lipsă și fără status = deja închisă. */
   closes_in_sec?: number;
   thumbnail?: string;
 }
@@ -140,8 +151,10 @@ export interface Slot {
 export interface Bid {
   id: string;
   slot_id: string;
-  /** id-ul din ads.json: o companie = o reclamă în demo */
+  /** id-ul companiei: din ads.json în datele de test, sintetizat pentru ofertele din backend */
   brand_id: string;
-  amount_eur: number;
+  /** în moneda spațiului */
+  amount: number;
   placed_at: string;
+  message?: string;
 }

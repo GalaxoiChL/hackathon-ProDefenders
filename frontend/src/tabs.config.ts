@@ -4,6 +4,7 @@ import WatchTab from "./tabs/WatchTab";
 import CompareTab from "./tabs/CompareTab";
 import MarketplaceTab from "./tabs/MarketplaceTab";
 import CompaniesTab from "./tabs/CompaniesTab";
+import OutreachTab from "./tabs/OutreachTab";
 import SignInTab from "./tabs/SignInTab";
 
 export interface TabDef {
@@ -20,6 +21,7 @@ export const TABS: TabDef[] = [
   { id: "compare", label: "Compare", component: CompareTab, enabled: true },
   { id: "marketplace", label: "Marketplace", component: MarketplaceTab, enabled: true },
   { id: "companies", label: "Companies", component: CompaniesTab, enabled: true },
+  { id: "outreach", label: "Outreach", component: OutreachTab, enabled: true },
   { id: "signin", label: "Sign in", component: SignInTab, enabled: true, align: "end" },
 ];
 

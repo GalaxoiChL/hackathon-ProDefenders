@@ -1,16 +1,17 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useMarket } from "../market";
-import { reservePrice } from "../data/auction";
+import { reserveFormula, reservePrice } from "../data/auction";
 import { regionStyle } from "../regions";
 import type { Slot } from "../data/types";
-import { Button, CountryMark, CountUp, PageHeader, compact, dec, eur, num, useNow } from "../components/ui";
+import { NavLink } from "react-router-dom";
+import { Button, CountryMark, CountUp, PageHeader, compact, dec, money, num, useNow } from "../components/ui";
 import { CountryPicker, Dropdown } from "../components/CountryPicker";
 
 type StatusFilter = "all" | "open" | "closed";
 
 export default function MarketplaceTab() {
-  const { slots, bids, isClosed, results } = useMarket();
+  const { slots, bids, isClosed, results, currency, source } = useMarket();
   const [country, setCountry] = useState("all");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -28,12 +29,16 @@ export default function MarketplaceTab() {
       <PageHeader
         eyebrow="For brands"
         title="Marketplace"
-        lede="Brands bid on billboards inside approved scenes, market by market. Bids are sealed; when the auction closes, the highest eligible bid wins and pays the second-highest price."
+        lede={
+          source === "api"
+            ? "Every rendered clip is a billboard for sale in each market. Invited businesses bid through the signed link in their email; when an auction closes, the highest eligible bid wins and pays the second-highest price."
+            : "Brands bid on billboards inside approved scenes, market by market. Bids are sealed; when the auction closes, the highest eligible bid wins and pays the second-highest price."
+        }
         aside={
           <dl className="flex gap-8">
             <Figure label="Open auctions" value={openCount} format={num} />
             <Figure label="Bids placed" value={bids.length} format={num} />
-            <Figure label="Sold to date" value={sold} format={eur} />
+            <Figure label="Sold to date" value={sold} format={(n) => money(n, currency)} />
           </dl>
         }
       />
@@ -124,18 +129,19 @@ function StatusLabel({ slot }: { slot: Slot }) {
   const { isClosed, results, deadlines } = useMarket();
   const now = useNow();
   if (!isClosed(slot.id)) {
-    const left = Math.max(0, (deadlines[slot.id] ?? now) - now) / 1000;
+    const deadline = deadlines[slot.id];
+    const left = Math.max(0, (deadline ?? now) - now) / 1000;
     return (
       <span className="inline-flex items-center gap-2 text-sm">
         <span className="size-1.5 animate-pulse rounded-full bg-positive" />
         <span className="tabular-nums">
-          {Math.floor(left / 60)}:{String(Math.floor(left % 60)).padStart(2, "0")} left
+          {deadline === undefined ? "Open" : `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, "0")} left`}
         </span>
       </span>
     );
   }
   const r = results[slot.id];
-  return r?.price !== undefined ? <span className="text-sm">Sold · {eur(r.price)}</span> : <span className="text-sm text-muted">Unsold</span>;
+  return r?.price !== undefined ? <span className="text-sm">Sold · {money(r.price, slot.currency)}</span> : <span className="text-sm text-muted">Unsold</span>;
 }
 
 const ROW_COLS = "md:grid-cols-[72px_minmax(0,1fr)_112px_84px_112px]";
@@ -153,7 +159,8 @@ function SlotRow({ slot, active, onSelect }: { slot: Slot; active: boolean; onSe
       <div className="min-w-0">
         <p className="font-serif text-base leading-snug">{slot.title}</p>
         <p className="mt-0.5 text-xs text-muted">
-          {dec(slot.screen_time_sec)} s on screen · <span className="capitalize">{slot.categories?.join(", ")}</span>
+          {slot.screen_time_sec !== undefined ? `${dec(slot.screen_time_sec)} s on screen` : `${compact(slot.audience)} expected views`}
+          {slot.categories?.length ? <> · <span className="capitalize">{slot.categories.join(", ")}</span></> : null}
         </p>
         <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 md:hidden">
           <CountryMark code={slot.region} />
@@ -163,7 +170,7 @@ function SlotRow({ slot, active, onSelect }: { slot: Slot; active: boolean; onSe
       <span className="hidden md:block">
         <CountryMark code={slot.region} />
       </span>
-      <span className="hidden text-right text-sm tabular-nums md:block">{eur(reservePrice(slot))}</span>
+      <span className="hidden text-right text-sm tabular-nums md:block">{money(reservePrice(slot), slot.currency)}</span>
       <span className="hidden md:block">
         <StatusLabel slot={slot} />
       </span>
@@ -172,7 +179,7 @@ function SlotRow({ slot, active, onSelect }: { slot: Slot; active: boolean; onSe
 }
 
 function SlotDetail({ slot }: { slot: Slot }) {
-  const { isClosed, closeAuction } = useMarket();
+  const { isClosed, closeAuction, source } = useMarket();
   const closed = isClosed(slot.id);
   return (
     <div>
@@ -186,14 +193,19 @@ function SlotDetail({ slot }: { slot: Slot }) {
       </div>
       <dl className="mt-5 grid grid-cols-2 gap-x-6 gap-y-4 text-sm">
         <Fact label="Market" value={<CountryMark code={slot.region} />} />
-        <Fact label="On screen" value={`${dec(slot.screen_time_sec)} s`} />
-        <Fact label="Visibility" value={`${dec(slot.visibility)} / 10`} />
-        <Fact label="Audience" value={compact(slot.audience)} />
-        <Fact label="CPM" value={eur(slot.cpm_eur)} />
-        <Fact label="Minimum price" value={<b>{eur(reservePrice(slot))}</b>} />
+        {slot.screen_time_sec !== undefined && <Fact label="On screen" value={`${dec(slot.screen_time_sec)} s`} />}
+        {slot.visibility !== undefined && <Fact label="Visibility" value={`${dec(slot.visibility)} / 10`} />}
+        <Fact label={slot.floor !== undefined ? "Expected views" : "Audience"} value={compact(slot.audience)} />
+        <Fact label="CPM" value={money(slot.cpm, slot.currency)} />
+        <Fact label="Minimum price" value={<b>{money(reservePrice(slot), slot.currency)}</b>} />
       </dl>
       <p className="mt-3 text-xs leading-relaxed text-muted">
-        Minimum = audience ÷ 1,000 × CPM × exposure × visibility. Accepts <span className="capitalize">{slot.categories?.join(", ")}</span>.
+        {reserveFormula(slot)}
+        {slot.categories?.length ? (
+          <>
+            {" "}Accepts <span className="capitalize">{slot.categories.join(", ")}</span>.
+          </>
+        ) : null}
       </p>
 
       <div className="mt-6 border-t border-ink pt-5">
@@ -201,7 +213,7 @@ function SlotDetail({ slot }: { slot: Slot }) {
           <Result slot={slot} />
         ) : (
           <>
-            <BidForm slot={slot} />
+            {source === "api" ? <InvitationNote /> : <BidForm slot={slot} />}
             <BidsReceived slot={slot} />
             <Button variant="link" className="mt-5 text-muted" onClick={() => closeAuction(slot.id)}>
               End this auction now (demo)
@@ -252,7 +264,7 @@ function BidForm({ slot }: { slot: Slot }) {
       <label className="mt-3 block text-xs text-muted">
         Your bid
         <span className="mt-1 flex items-center border border-rule-strong bg-card focus-within:border-ink">
-          <span className="pl-3 text-sm text-muted">€</span>
+          <span className="pl-3 text-sm text-muted">{slot.currency === "USD" ? "$" : "€"}</span>
           <input
             type="number"
             inputMode="numeric"
@@ -285,8 +297,24 @@ function BidForm({ slot }: { slot: Slot }) {
   );
 }
 
+/** Cu backend-ul, ofertele vin doar prin linkul semnat din emailul de invitație (backend/outreach/bids.py). */
+function InvitationNote() {
+  return (
+    <div>
+      <p className="font-serif text-lg">How businesses bid</p>
+      <p className="mt-2 text-sm leading-relaxed text-ink-2">
+        Each invited business gets a signed link in its email and bids from there, so bids cannot be placed from this page. New bids
+        appear here on their own.
+      </p>
+      <NavLink to="/outreach" className="mt-4 inline-block text-sm font-medium underline decoration-rule-strong underline-offset-4 hover:decoration-ink">
+        Invite businesses in Outreach
+      </NavLink>
+    </div>
+  );
+}
+
 function BidsReceived({ slot }: { slot: Slot }) {
-  const { bids, brands } = useMarket();
+  const { bids, brands, source } = useMarket();
   const list = bids.filter((b) => b.slot_id === slot.id).sort((a, b) => b.placed_at.localeCompare(a.placed_at));
   return (
     <div className="mt-8">
@@ -303,7 +331,10 @@ function BidsReceived({ slot }: { slot: Slot }) {
               className="flex items-baseline justify-between border-b border-rule py-2 text-sm"
             >
               <span>{brands.find((x) => x.id === b.brand_id)?.brand ?? b.brand_id}</span>
-              <span className="font-mono text-xs text-muted">sealed · {new Date(b.placed_at).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}</span>
+              <span className="font-mono text-xs text-muted">
+                {source === "api" ? money(b.amount, slot.currency) : "sealed"} ·{" "}
+                {new Date(b.placed_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+              </span>
             </motion.li>
           ))}
         </AnimatePresence>
@@ -330,7 +361,7 @@ function Result({ slot }: { slot: Slot }) {
           <p className="text-xs uppercase tracking-[0.14em] text-muted">Sold to</p>
           <p className="mt-1 font-serif text-3xl">{name(r.winner.brand_id)}</p>
           <p className="mt-2 text-sm">
-            Pays <b className="tabular-nums">{eur(r.price)}</b> <span className="text-muted">· bid {eur(r.winner.amount_eur)}</span>
+            Pays <b className="tabular-nums">{money(r.price, slot.currency)}</b> <span className="text-muted">· bid {money(r.winner.amount, slot.currency)}</span>
           </p>
           <p className="mt-2 text-xs leading-relaxed text-muted">Second-price rule: the winner pays the next-highest eligible bid, never less than the minimum price.</p>
         </>
@@ -341,7 +372,7 @@ function Result({ slot }: { slot: Slot }) {
         {r.outcomes.map((o) => (
           <li key={o.bid.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 border-b border-rule py-2.5 text-sm">
             <span>{name(o.bid.brand_id)}</span>
-            <span className="tabular-nums">{eur(o.bid.amount_eur)}</span>
+            <span className="tabular-nums">{money(o.bid.amount, slot.currency)}</span>
             <span className={`text-xs ${OUTCOME[o.status].cls}`}>
               {OUTCOME[o.status].label}
               {o.reason && o.status !== "won" ? ` · ${o.reason}` : ""}

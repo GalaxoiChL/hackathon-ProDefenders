@@ -18,6 +18,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+# model weights live in backend/models/ whatever folder the script is started from
+# (Ultralytics downloads a known model straight to the path it is given)
+MODELS = Path(__file__).resolve().parent.parent / "models"
+
 FADE_OUT = 0.25  # ad fades out over 4 frames (~0.13 s at 30 fps)
 FADE_IN = 0.5    # and back in over 2 frames: the old ad must not show through for long
 
@@ -271,7 +275,7 @@ class PlaneTracker:
 class Occluders:
     """Person/vehicle segmentation with YOLO, so people walking in front stay in front of the ad."""
 
-    def __init__(self, classes: list[str], weights: str = "yolo11n-seg.pt"):
+    def __init__(self, classes: list[str], weights: str = str(MODELS / "yolo11n-seg.pt")):
         from ultralytics import YOLO  # imported lazily: slow import, optional feature
 
         self.model = YOLO(weights)

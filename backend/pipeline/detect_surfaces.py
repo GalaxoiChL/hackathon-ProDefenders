@@ -24,7 +24,8 @@ PROMPTS = {
     "an advertisement on the side of a bus": "vehicle",
 }
 OWL_MODEL = "google/owlv2-base-patch16-ensemble"
-SAM_WEIGHTS = "sam2.1_t.pt"
+# in backend/models/ whatever folder the script is started from (Ultralytics downloads it there)
+SAM_WEIGHTS = str(Path(__file__).resolve().parent.parent / "models" / "sam2.1_t.pt")
 
 
 def read_frame(video: Path, idx: int) -> np.ndarray:

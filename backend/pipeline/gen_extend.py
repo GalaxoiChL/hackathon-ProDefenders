@@ -131,6 +131,7 @@ def describe_background(ad: np.ndarray) -> str:
     small = cv2.resize(ad, None, fx=min(1.0, 640 / max(ad.shape[:2])), fy=min(1.0, 640 / max(ad.shape[:2])))
     body = {
         "model": "gemma3:4b", "stream": False, "options": {"temperature": 0.2},
+        "keep_alive": 0,  # free the GPU for Stable Diffusion right after (both do not fit in 4-6 GB)
         "prompt": ("Describe ONLY the background of this advertisement as a short prompt for an image "
                    "generator: colors, lighting, textures and the kind of objects scattered on it. "
                    "Ignore and do not mention any text, prices or logos. One line, max 30 words, English."),
@@ -233,6 +234,7 @@ def has_fake_text(parts: list[np.ndarray]) -> bool:
     for p in parts:
         body = {
             "model": "gemma3:4b", "stream": False, "options": {"temperature": 0},
+            "keep_alive": 0,  # Stable Diffusion is still loaded: do not keep both on the GPU
             "prompt": ("Look at this image strip. Does it contain any text, letters, characters, numbers, "
                        "or scribbles that look like writing (even unreadable)? Answer only YES or NO."),
             "images": [base64.b64encode(cv2.imencode(".jpg", p)[1].tobytes()).decode()],

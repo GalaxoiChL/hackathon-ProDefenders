@@ -7,8 +7,11 @@ from __future__ import annotations
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
+
+# the site's icon: the SwapBoard logo, same as the tab icon in frontend/index.html
+FAVICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><filter id="p"><feTurbulence type="fractalNoise" baseFrequency=".04" numOctaves="2" seed="7"/><feDisplacementMap in="SourceGraphic" scale="2.4"/></filter><rect width="64" height="64" rx="10" fill="#f7f5f0"/><g filter="url(#p)" fill="none" stroke="#1b1a17" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7.5C20 6 44 6.8 59.5 6L58.8 44.5C42 45.6 22 44.4 5.6 45.2Z" stroke-width="3.2"/><path d="M17 45.5L16.2 59.5M46.5 45L47.8 59.2" stroke-width="3.6"/><circle cx="32" cy="25.5" r="14.5" stroke-width="2.6"/></g><g filter="url(#p)" fill="none" stroke="#8a1c1c" stroke-width="3" stroke-linecap="round"><path d="M13 34C17 18 27 10 37 15.5C44 19 48 16 52.5 11.5"/></g><g fill="#8a1c1c"><circle cx="13" cy="34" r="3.2"/><circle cx="37" cy="15.5" r="3.2"/><circle cx="52.5" cy="11.5" r="3.2"/></g></svg>'
 
 from . import regions
 from .config import Settings
@@ -198,10 +201,29 @@ def create_app(settings: Settings | None = None, geo: GeoResolver | None = None,
     app.include_router(router)
 
     # ---------------- files ----------------
+    # Some browsers ask for /favicon.ico whatever the page declares: same icon as frontend/index.html.
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon():
+        return Response(FAVICON_SVG, media_type="image/svg+xml",
+                        headers={"Cache-Control": "public, max-age=86400"})
+
+    # The site asks for output/index.json to list rendered clips; answer from the store (JSON, not 404).
+    @app.get("/output/index.json", include_in_schema=False)
+    def output_index():
+        return {"clips": store.list_clips()}
+
     # Starlette's FileResponse answers Range requests, so <video> seeking works.
     app.mount("/output", StaticFiles(directory=settings.output_dir, check_dir=False), name="output")
-    app.mount("/assets", StaticFiles(directory=settings.assets_dir, check_dir=False), name="assets")
+    # /assets is shared by backend/assets (clips, ads) and the built site's JS/CSS (frontend/dist/assets,
+    # Vite's default folder). Without the build folder the page loads blank: look there first.
+    assets = StaticFiles(directory=settings.assets_dir, check_dir=False)
+    built_assets = settings.frontend_dir / "assets"
+    if (settings.frontend_dir / "index.html").is_file() and built_assets.is_dir():
+        assets.all_directories.insert(0, built_assets)
+    app.mount("/assets", assets, name="assets")
     app.mount("/data", StaticFiles(directory=settings.data_dir, check_dir=False), name="data")
+    # team clips (catalog.js, index.json, videos): the site loads them at /media, as with the Vite server
+    app.mount("/media", StaticFiles(directory=settings.media_dir, check_dir=False), name="media")
 
     index = settings.frontend_dir / "index.html"
     if index.is_file() and "/src/main" not in index.read_text(encoding="utf-8", errors="ignore"):

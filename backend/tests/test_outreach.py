@@ -19,7 +19,7 @@ from backend.outreach.mailer import looks_personal
 from backend.outreach.sources import NOMINATIM, OVERPASS
 
 SITE = "https://baeckerei-mueller.de"
-HOME = f"""<html><head><title>Bäckerei Müller</title>
+HOME = """<html><head><title>Bäckerei Müller</title>
 <meta name="description" content="Familienbäckerei in Berlin-Mitte seit 1962"></head>
 <body><script>var x="spam@tracker.io"</script><h1>Frisches Brot</h1>
 <a href="/kontakt">Kontakt</a><a href="https://facebook.com/x">fb</a></body></html>"""
@@ -405,3 +405,39 @@ def test_stale_cache_used_when_every_server_fails(tmp_path):
 
     again = Sources(Down(), cache_dir=cache).osm("Berlin", "DE", "food", 5)
     assert [c.name for c in again] == [c.name for c in first]
+
+
+# ---------- campaign lifecycle ----------
+def test_same_search_while_running_is_not_started_twice(tmp_path):
+    import threading
+
+    gate = threading.Event()
+
+    class Slow(FakeHttp):
+        def post_json(self, url, data, timeout=None):
+            gate.wait(10)                          # Overpass "still thinking"
+            return super().post_json(url, data, timeout)
+
+    client, app = make(tmp_path, http=Slow())
+    body = {"market": "DE", "category": "food"}
+    first = client.post("/api/outreach/campaigns", json=body).json()
+    again = client.post("/api/outreach/campaigns", json=body).json()
+    other = client.post("/api/outreach/campaigns", json={**body, "category": "hotel"}).json()
+    gate.set()
+    for t in app.state.outreach._threads.values():
+        t.join(timeout=10)
+    assert again["id"] == first["id"]              # a double click returns the running search
+    assert other["id"] != first["id"]              # a different search still starts
+    assert len(client.get("/api/outreach/campaigns").json()) == 2
+    # once it finished, the same search can be run again
+    assert client.post("/api/outreach/campaigns", json=body).json()["id"] not in (first["id"], other["id"])
+
+
+def test_searches_cut_off_by_a_restart_are_marked_failed(tmp_path):
+    client, app = make(tmp_path)
+    db = app.state.outreach.db
+    cid = db.insert("campaigns", {"market": "DE", "city": "Berlin", "category": "food", "clip": "demo",
+                                  "query": "{}", "status": "running", "created": 0})
+    client2, _ = make(tmp_path)                    # the server starts again on the same database
+    c = client2.get(f"/api/outreach/campaigns/{cid}").json()
+    assert c["status"] == "failed" and "interrupted" in c["error"]

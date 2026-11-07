@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import queue
 import re
+import os
 import subprocess
 import threading
 import time
@@ -28,6 +29,12 @@ from .store import BadRequest, NotFound, Store, check_clip
 
 PROGRESS_RE = re.compile(r"^\s*(\d+)/(\d+|\?) frames")
 SUMMARY_RE = re.compile(r"frames: (\d+), billboard lost in (\d+)")
+
+
+def utf8_env() -> dict[str, str]:
+    """Environment for the pipeline scripts: on Windows a piped stdout defaults to cp1252, and the
+    first Romanian letter printed ("ă" in a scene summary) crashed the script. Force UTF-8."""
+    return {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
 
 
 @dataclass
@@ -193,7 +200,7 @@ class JobRunner:
             if job.frames_total is None and job.video:
                 probed = probe_video(job.video)
                 job.frames_total = probed.frames if probed else None
-            proc = subprocess.Popen(job.command, cwd=self.s.root, stdout=subprocess.PIPE,
+            proc = subprocess.Popen(job.command, cwd=self.s.root, stdout=subprocess.PIPE, env=utf8_env(),
                                     stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace")
             assert proc.stdout is not None
             for line in proc.stdout:
@@ -228,10 +235,10 @@ class JobRunner:
         if not script.is_file():
             return
         res = subprocess.run([self.s.python, str(script), job.clip], cwd=self.s.root, capture_output=True,
-                             text=True, encoding="utf-8", errors="replace")
+                             env=utf8_env(), text=True, encoding="utf-8", errors="replace")
         job.log.extend(line for line in (res.stdout + res.stderr).splitlines() if line.strip())
         if res.returncode != 0:
-            job.log.append(f"publish to demo/media/ failed (exit {res.returncode})")
+            job.log.append(f"publish to frontend/demo/media/ failed (exit {res.returncode})")
 
     # ---------- manifest ----------
     def adopt_manifest(self, job: Job, summary: tuple[int, int] | None) -> str:

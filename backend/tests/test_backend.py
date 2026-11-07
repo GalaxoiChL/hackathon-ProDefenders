@@ -118,6 +118,20 @@ def test_frontend_dist_preferred_over_vite_source(root, tmp_path_factory):
     assert "built" in frontend_client(root, front).get("/").text
 
 
+def test_built_site_assets_media_and_clip_index(root, tmp_path_factory):
+    front = tmp_path_factory.mktemp("frontend")
+    write(front / "dist/index.html", b'<script src="/assets/index-abc.js"></script>')
+    write(front / "dist/assets/index-abc.js", b"console.log(1)")              # Vite's build output
+    write(front / "demo/media/index.json", {"clips": []})                     # team clips (Git LFS)
+    write(root / "assets/ads/ro.png", b"png")                                 # backend/assets still served
+    c = frontend_client(root, front)
+    assert c.get("/assets/index-abc.js").text == "console.log(1)"
+    assert c.get("/assets/ads/ro.png").content == b"png"
+    assert c.get("/media/index.json").json() == {"clips": []}
+    assert c.get("/output/index.json").json() == {"clips": ["melbourne"]}
+    assert c.get("/favicon.ico").headers["content-type"].startswith("image/svg")
+
+
 def test_default_frontend_is_next_to_backend(tmp_path):
     assert Settings(root=tmp_path / "backend").frontend_dir == tmp_path / "frontend"
 

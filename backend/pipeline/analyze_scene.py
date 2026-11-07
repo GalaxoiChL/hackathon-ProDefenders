@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -59,7 +60,9 @@ CHOICE_SCHEMA = {
 
 def ask(prompt: str, schema: dict, images: list[bytes] | None = None, timeout: int = 300) -> dict:
     body = {"model": MODEL, "prompt": prompt, "stream": False, "format": schema,
-            "options": {"temperature": 0.2}}
+            "options": {"temperature": 0.2},
+            # the next pipeline steps (Stable Diffusion, YOLO) need the GPU: unload gemma right away
+            "keep_alive": 0}
     if images:
         body["images"] = [base64.b64encode(b).decode() for b in images]
     req = urllib.request.Request(OLLAMA, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"})
@@ -131,6 +134,10 @@ def choose(region: str, scene: dict, candidates: list[dict]) -> dict:
 
 
 def main() -> None:
+    # Romanian text in the output: keep it printable when stdout is a pipe or a file (cp1252 on Windows)
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("video", type=Path)
     ap.add_argument("--frames", type=int, default=3, help="frames sampled for the scene description")

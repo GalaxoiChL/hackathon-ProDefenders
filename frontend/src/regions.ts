@@ -24,6 +24,9 @@ const KNOWN: Record<string, RegionStyle> = {
   GR: { color: "#4D7FB0", name: "Greece" },
 };
 
+/** Țările pe care le știm afișa, în ordinea din selectoare. */
+export const KNOWN_REGIONS = Object.keys(KNOWN);
+
 const FALLBACK_COLOR = "#7A766C";
 
 export function regionStyle(code: string, label?: string): RegionStyle {

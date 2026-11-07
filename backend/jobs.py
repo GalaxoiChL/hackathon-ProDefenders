@@ -212,11 +212,26 @@ class JobRunner:
                 raise RuntimeError(f"pipeline exited with code {job.returncode}")
             job.manifest = (self.adopt_manifest(job, summary) if job.mode == "run"
                             else self.write_manifest(job, summary))
+            self.publish(job)
             job.status = "done"
         except Exception as e:  # report, don't crash the server
             job.status, job.error = "failed", str(e)
         finally:
             job.finished = time.time()
+
+    def publish(self, job: Job) -> None:
+        """Copy the result to frontend/public/media/ (Git LFS) so the team gets it with git pull.
+
+        Runs after the manifest is final (with `stats`); a failure is logged, the render still counts as done.
+        """
+        script = self.s.root / "pipeline" / "publish_media.py"
+        if not script.is_file():
+            return
+        res = subprocess.run([self.s.python, str(script), job.clip], cwd=self.s.root, capture_output=True,
+                             text=True, encoding="utf-8", errors="replace")
+        job.log.extend(line for line in (res.stdout + res.stderr).splitlines() if line.strip())
+        if res.returncode != 0:
+            job.log.append(f"publish to frontend/public/media/ failed (exit {res.returncode})")
 
     # ---------- manifest ----------
     def adopt_manifest(self, job: Job, summary: tuple[int, int] | None) -> str:

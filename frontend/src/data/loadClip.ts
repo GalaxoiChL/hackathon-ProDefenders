@@ -77,14 +77,43 @@ function applyStats(m: Manifest, stats: ApiStats | undefined) {
   }
 }
 
-/** Lista clipurilor: din API, apoi output/index.json ({"clips": [...]}), altfel clipul de test. */
+/** Lista clipurilor: cele din API, cele publicate în media/ și cele din output/index.json; altfel clipul de test. */
 export async function listClips(): Promise<string[]> {
-  if (await apiAvailable()) {
-    const clips = await fetchJson<{ clip: string }[]>("api/clips");
-    if (clips?.length) return clips.map((c) => c.clip);
-  }
-  const index = await fetchJson<{ clips?: string[] }>("output/index.json");
-  return index?.clips?.length ? index.clips : ["melbourne"];
+  const names = new Set<string>();
+  if (await apiAvailable()) (await fetchJson<{ clip: string }[]>("api/clips"))?.forEach((c) => names.add(c.clip));
+  (await fetchMediaIndex())?.clips?.forEach((c) => names.add(c.clip));
+  (await fetchJson<{ clips?: string[] }>("output/index.json"))?.clips?.forEach((c) => names.add(c));
+  return names.size ? [...names].sort() : ["melbourne"];
+}
+
+/** media/index.json: clipurile publicate pentru toată echipa (pipeline/publish_media.py, Git LFS). */
+interface MediaIndex {
+  clips?: { clip: string; regions?: string[]; published?: string }[];
+}
+const fetchMediaIndex = () => fetchJson<MediaIndex>("media/index.json");
+
+/** Conținutul lui media/index.json ca text: dacă se schimbă (după git pull), a apărut sau s-a refăcut un clip. */
+export async function mediaIndexStamp(): Promise<string> {
+  return JSON.stringify((await fetchMediaIndex())?.clips ?? []);
+}
+
+async function loadFiles(clip: string, manifestPath: string, source: "media" | "live"): Promise<ClipData | undefined> {
+  const raw = await fetchJson<RawManifest>(manifestPath);
+  if (!raw?.regions?.length) return undefined;
+  const n = normalize(raw);
+  const api = await apiAvailable();
+  const [scene, surfaces, ads, geo] = await Promise.all([
+    n.scene ?? fetchJson<Scene>(n.manifest.scene ?? `output/${clip}.scene.json`),
+    n.surfaces ??
+      fetchJson<Surfaces>(n.manifest.surfaces ?? `output/${clip}.surfaces.json`).then(
+        (s) => s ?? fetchJson<Surfaces>(`assets/clips/${clip}.surfaces.json`),
+      ),
+    fetchJson<Ad[]>("data/ads.json"),
+    // fără clipul în backend, putem totuși afla țara privitorului de la el
+    api ? fetchJson<{ country: string; source?: string; market: string; market_match?: string }>("api/geo") : undefined,
+  ]);
+  const viewer: Viewer | undefined = geo && { country: geo.country, source: geo.source, region: geo.market, match: geo.market_match };
+  return { manifest: n.manifest, scene, surfaces, ads, viewer, source };
 }
 
 export async function loadClip(clip: string): Promise<ClipData> {
@@ -104,19 +133,9 @@ export async function loadClip(clip: string): Promise<ClipData> {
     }
   }
 
-  const raw = await fetchJson<RawManifest>(`output/${clip}.manifest.json`);
-  if (raw?.regions?.length) {
-    const n = normalize(raw);
-    const [scene, surfaces, ads] = await Promise.all([
-      n.scene ?? fetchJson<Scene>(n.manifest.scene ?? `output/${clip}.scene.json`),
-      n.surfaces ??
-        fetchJson<Surfaces>(n.manifest.surfaces ?? `output/${clip}.surfaces.json`).then(
-          (s) => s ?? fetchJson<Surfaces>(`assets/clips/${clip}.surfaces.json`),
-        ),
-      fetchJson<Ad[]>("data/ads.json"),
-    ]);
-    return { manifest: n.manifest, scene, surfaces, ads, source: "live" };
-  }
+  // clipurile publicate în repo (vin cu git pull), apoi randările locale din output/
+  const files = (await loadFiles(clip, `media/${clip}/manifest.json`, "media")) ?? (await loadFiles(clip, `output/${clip}.manifest.json`, "live"));
+  if (files) return files;
 
   return {
     manifest: mockManifest as unknown as Manifest,

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { listClips, loadClip } from "./data/loadClip";
+import { listClips, loadClip, mediaIndexStamp } from "./data/loadClip";
 import type { ClipData, RegionCode } from "./data/types";
 
 interface AppState {
@@ -15,6 +15,9 @@ interface AppState {
 
 const AppContext = createContext<AppState | null>(null);
 
+/** Cât de des verificăm media/index.json pentru clipuri noi. */
+const MEDIA_CHECK_MS = 30_000;
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [clips, setClips] = useState<string[]>(["melbourne"]);
   const [clip, setClip] = useState("melbourne");
@@ -22,11 +25,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [region, setRegion] = useState<RegionCode | null>(null);
 
+  // crește când apare sau s-a refăcut un clip publicat în media/, ca să reîncărcăm datele
+  const [mediaVersion, setMediaVersion] = useState(0);
+
   useEffect(() => {
     listClips().then((list) => {
       setClips(list);
       setClip((c) => (list.includes(c) ? c : list[0]));
     });
+  }, [mediaVersion]);
+
+  // după un git pull, clipurile noi apar singure, fără reîncărcarea paginii
+  useEffect(() => {
+    let last: string | undefined;
+    const check = () =>
+      mediaIndexStamp().then((stamp) => {
+        if (last !== undefined && stamp !== last) setMediaVersion((v) => v + 1);
+        last = stamp;
+      });
+    check();
+    const t = window.setInterval(check, MEDIA_CHECK_MS);
+    return () => clearInterval(t);
   }, []);
 
   useEffect(() => {
@@ -43,7 +62,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [clip]);
+  }, [clip, mediaVersion]);
 
   return (
     <AppContext.Provider value={{ clips, clip, setClip, data, loading, region, setRegion }}>{children}</AppContext.Provider>

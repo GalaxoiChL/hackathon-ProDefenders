@@ -115,8 +115,8 @@ export interface ClipData {
   surfaces?: Surfaces;
   ads?: Ad[];
   viewer?: Viewer;
-  /** "api" = serverul din backend/; "live" = fișiere din output/; "mock" = date de test din src/data/mock */
-  source: "api" | "live" | "mock";
+  /** "api" = serverul din backend/; "media" = publicat în repo (frontend/public/media); "live" = output/ local; "mock" = date de test */
+  source: "api" | "media" | "live" | "mock";
 }
 
 // Marketplace (încă nu e în CLAUDE.md: data/inventory.json și data/bids.json)

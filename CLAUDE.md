@@ -142,11 +142,14 @@ Folosește automat ce produc celelalte task-uri, dacă există, altfel are fallb
 - `output/<clip>.scene.json` (generat automat de `analyze_scene.py`) pentru alegerea AI și motiv; dacă Ollama nu merge: primul brand al regiunii
 - `assets/generated/<clip>/<regiune>.png` (task 2) pentru reclama adaptată de AI; fără el: `adapt_ad.py` încadrează reclama fără deformare
 
+**Videoclipurile ajung la toată echipa prin Git LFS.** La final, `run.py` (și joburile din backend) rulează `pipeline/publish_media.py`, care copiază versiunile pe țări, „AI view” și manifestul în `frontend/public/media/<clip>/` și actualizează `frontend/public/media/index.json`. Faci commit + push la `frontend/public/media`, iar colegii primesc videoclipurile cu `git pull`; site-ul vede singur clipul nou (verifică lista la 30 de secunde). O singură dată pe fiecare laptop: `git lfs install`. Manual: `python pipeline/publish_media.py <clip>` sau `--all`; `--with-source` adaugă și clipul original (pentru glisorul înainte/după). Limita gratuită GitHub LFS: 1 GB stocare și 1 GB descărcări pe lună, deci publicăm doar clipurile finale de demo.
+
 Clipul de test nu e în git (prea mare). Se descarcă de pe [Pexels](https://www.pexels.com/video/people-walking-down-a-city-street-with-a-red-jacket-27817664/) și se salvează ca `assets/clips/melbourne.mp4`.
 
 | Script | Rol |
 |---|---|
 | `pipeline/run.py` | **comanda principală:** tot lanțul, de la clip la `manifest.json` |
+| `pipeline/publish_media.py` | publică randarea în `frontend/public/media/` (Git LFS), ca site-ul s-o arate la toată echipa |
 | `pipeline/analyze_scene.py` | **AI local (Ollama `gemma3:4b`):** descrie scena, verifică brand safety (scenă nesigură = fără reclamă), alege reclama potrivită per țară cu scor și motiv în română; scrie `scene.json` |
 | `pipeline/adapt_ad.py` | încadrează o reclamă la formatul suprafeței fără deformare (fallback pentru AI-ul din task 2) |
 | `pipeline/insert_ad.py` | motorul: urmărire (optical flow + omografie), pierdere și regăsire (SIFT), oameni în față (YOLO-seg), export pe țări + „AI view” |
@@ -166,7 +169,7 @@ Serverul API (pornește și fără clipuri randate):
 
 - **Nu lucrăm direct pe `main`.** Branch-ul tău, apoi Pull Request.
 - `git pull` des. Commit-uri mici, cu mesaje clare.
-- **Nu urcăm** videoclipuri, `output/`, greutăți de modele (`*.pt`) sau `.env`; sunt în `.gitignore`.
+- **Nu urcăm** `output/`, clipurile sursă, greutăți de modele (`*.pt`) sau `.env`; sunt în `.gitignore`. **Excepție:** videoclipurile finale de demo, doar prin `publish_media.py` în `frontend/public/media/` (Git LFS, vezi mai sus). Repo-ul e privat, deci rămân vizibile doar echipei.
 - Emailurile către firme pleacă **doar** aprobate de un om și cu `OUTREACH_SEND_ENABLED=true`; în demo, cu `OUTREACH_TEST_RECIPIENT`.
 - **Cheile API** stau doar în `.env` (ex. `IMAGE_API_KEY=...`), niciodată în cod, chat sau commit.
 - Reclame **reale** de branduri, folosite doar demonstrativ (cu mențiunea de neafiliere în prezentare); clipurile video doar cu licență liberă (Pexels).

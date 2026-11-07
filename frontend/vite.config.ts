@@ -8,7 +8,13 @@ import tailwindcss from "@tailwindcss/vite";
 // Rădăcina repo-ului: manifest.json folosește căi relative la ea (ex. "output/melbourne_ro.mp4").
 const REPO = fileURLToPath(new URL("..", import.meta.url));
 // Folderele din repo pe care frontend-ul le citește direct, fără să copiem videoclipuri.
-const SERVED_DIRS = ["output", "assets", "data"];
+// media/ e în public/ (deci intră și în build), dar îl servim tot de aici ca să meargă bucățile de 4 MB.
+const SERVED_DIRS: Record<string, string> = {
+  output: "output",
+  assets: "assets",
+  data: "data",
+  media: "frontend/public/media",
+};
 
 const CHUNK_BYTES = 4 * 1024 * 1024;
 
@@ -53,7 +59,8 @@ function serveRepoFile(dir: string): Connect.NextHandleFunction {
 }
 
 function serveRepoDirs(): Plugin {
-  const mount = (use: Connect.Server["use"]) => SERVED_DIRS.forEach((d) => use(`/${d}`, serveRepoFile(d)));
+  const mount = (use: Connect.Server["use"]) =>
+    Object.entries(SERVED_DIRS).forEach(([url, dir]) => use(`/${url}`, serveRepoFile(dir)));
   return {
     name: "serve-repo-dirs",
     configureServer: (server) => mount(server.middlewares.use.bind(server.middlewares)),
